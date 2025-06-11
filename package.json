@@ -1,0 +1,28 @@
+{
+  "name": "shift-contracts",
+  "version": "1.0.0",
+  "description": "Smart Contracts",
+  "main": "index.js",
+  "scripts": {
+    "compile": "npx hardhat compile",
+    "test": "npx hardhat test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SHIFT-NebulaLabs/shift-contracts.git"
+  },
+  "keywords": [],
+  "author": "NebulaLabs",
+  "license": "MIT",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/SHIFT-NebulaLabs/shift-contracts/issues"
+  },
+  "homepage": "https://github.com/SHIFT-NebulaLabs/shift-contracts#readme",
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "@openzeppelin/contracts": "^5.3.0",
+    "dotenv": "^16.5.0",
+    "hardhat": "^2.24.2"
+  }
+}
