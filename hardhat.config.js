@@ -53,7 +53,8 @@ module.exports = {
   },
   resolve: {
     alias: {
-      "@openzeppelin": path.resolve(__dirname, "node_modules/@openzeppelin/contracts")
+      "@openzeppelin": path.resolve(__dirname, "node_modules/@openzeppelin/contracts"),
+      "@prb": path.resolve(__dirname, "node_modules/@prb/math")
     }
   },
 };
