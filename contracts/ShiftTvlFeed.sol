@@ -2,11 +2,12 @@
 pragma solidity ^0.8.28;
 
 import "@openzeppelin/contracts/access/IAccessControl.sol";
+import { IShiftVault } from "./interface/IShiftVault.sol";
 
 contract ShiftTvlFeed {
     bytes32 private constant ORACLE_ROLE = keccak256("ORACLE_ROLE");
-    uint8 public constant DECIMALS = 8;
     IAccessControl public immutable accessControlContract;
+    IShiftVault public shiftVault;
 
     struct TvlData {
         uint256 value;
@@ -14,6 +15,7 @@ contract ShiftTvlFeed {
     }
 
     TvlData[] private tvlHistory;
+    bool private initialized;
 
     event TvlUpdated(uint256 newValue);
 
@@ -27,9 +29,27 @@ contract ShiftTvlFeed {
         accessControlContract = IAccessControl(_accessControlContract);
     }
 
+    function initialize(address _shiftVaultContract) external {
+        require(!initialized, "Contract is already initialized");
+        require(_shiftVaultContract != address(0), "Shift vault address cannot be zero");
+        shiftVault = IShiftVault(_shiftVaultContract);
+        initialized = true;
+    }
+
     function updateTvl(uint256 _value) external onlyOracle {
         tvlHistory.push(TvlData({ value: _value, timestamp: block.timestamp }));
         emit TvlUpdated(_value);
+    }
+
+    function updateTvlForDeposit(address _user, uint256 _value) external onlyOracle {
+        tvlHistory.push(TvlData({ value: _value, timestamp: block.timestamp }));
+        shiftVault.allowDeposit(_user);
+        emit TvlUpdated(_value);
+    }
+
+
+    function decimals() public view virtual returns (uint8) {
+        return 6;
     }
 
     function getLastTvl() external view returns (TvlData memory) {
