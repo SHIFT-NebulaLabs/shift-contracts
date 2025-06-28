@@ -13,7 +13,6 @@ import { IShiftTvlFeed } from "./interface/IShiftTvlFeed.sol";
 // ✅ 2 step deposit to update TVL first
 // Withdrawal request, with a lock of x days
 // Withdraw after x days
-// User whitelist
 // Possibility to transfer data and tokens with an upgraded contract
 // ✅ TVL from external feed
 // ✅ Mint shares based on deposit
@@ -22,35 +21,63 @@ import { IShiftTvlFeed } from "./interface/IShiftTvlFeed.sol";
 // Withdrawal fee ("Performance") for the treasury
 // track how many active users there are
 // access control for the contract to implement
+// ✅ Whitelist of users that can deposit
+// enable permit ?
 
-// Active user are the ones with the sUSDC balance > 0
+// Need to track active users
 // TVL limit
+// Clean code & optimization
+// Comments & Messages
 
 contract ShiftVault is ERC20, ReentrancyGuard {
     using SafeERC20 for ERC20;
 
     bytes32 public constant EXECUTOR_ROLE = keccak256("EXECUTOR_ROLE");
-    uint256 public constant VALIDITY_DURATION = 10 seconds;
+    uint256 public constant VALIDITY_DURATION = 20 seconds;
+    uint256 public constant TIMELOCK = 1 days;
 
     IAccessControl public immutable accessControlContract;
     ERC20 public immutable baseToken;
     IShiftTvlFeed public immutable tvlFeed;
 
     // Mapping to track user deposits
+    // !!Review visinility
     mapping(address => uint256) public userDeposits;
-
     mapping(address => DepositState) public depositStates;
+
+    mapping(address => bool) public isWhitelisted;
+    bool public whitelistEnabled;
+    
+    uint256 public activeUsers;
+
+
+
+    uint256 public currentBatchId;
+    mapping(uint256 => BatchState) public batchWithdrawStates; // total shares per batch
+    mapping(address => WithdrawState) public userWithdrawStates; // user withdraw states
+
+
 
     // Events
     event DepositRequested(address indexed user);
+    event DepositAllowed(address indexed user);
 
     // Structs
     struct DepositState {
         bool isPriceUpdated;
-        uint256 updatedAt;
         uint256 expirationTime;
     }
 
+    struct WithdrawState {
+        uint256 batchId;
+        uint256 requestedAt;
+        uint256 sharesAmount;
+    }
+
+    struct BatchState {
+        uint256 totalShares;
+        uint256 rate; // rate (baseToken per share) per batch
+    }
 
 
     constructor(address _accessControlContract, address _tokenContract, address _shiftTvlFeedContract) ERC20("Shift LP", "SLP") {
@@ -60,11 +87,14 @@ contract ShiftVault is ERC20, ReentrancyGuard {
         accessControlContract = IAccessControl(_accessControlContract);
         baseToken = ERC20(_tokenContract);
         tvlFeed = IShiftTvlFeed(_shiftTvlFeedContract);
+        whitelistEnabled = true;
+        currentBatchId = 1; // Start with batch ID 1
     }
 
 
     //be sure to add a time lock to avoid ddos attacks
     function reqDeposit() external nonReentrant {
+        require(isWhitelisted[msg.sender] || !whitelistEnabled, "User is not whitelisted for deposits");
         require(!depositStates[msg.sender].isPriceUpdated, "Deposit request already exists");
         require(_isExpired(), "Deposit request is still valid");
 
@@ -74,7 +104,7 @@ contract ShiftVault is ERC20, ReentrancyGuard {
     }
 
 
-    function finalizeDeposit(uint256 _amount) external {
+    function Deposit(uint256 _amount) external nonReentrant {
         //min based on TVL ??
         require(_amount > 0, "Deposit amount must be greater than zero");
         require(depositStates[msg.sender].isPriceUpdated && !_isExpired(), "Deposit request not found or expired");
@@ -92,17 +122,101 @@ contract ShiftVault is ERC20, ReentrancyGuard {
             _mint(msg.sender, _calcSharesFromToken(_amount));
             //update TVL after minting shares??
         }
+        unchecked {
+            ++activeUsers; // Increment active users count
+        }
     }
+
+    function reqWithdraw(uint256 _shares) external nonReentrant {
+        WithdrawState storage userState = userWithdrawStates[msg.sender];
+        require(_shares > 0, "Shares amount must be greater than zero");
+        require(balanceOf(msg.sender) >= _shares, "Insufficient shares");
+        require(userState.sharesAmount == 0, "Withdrawal already requested");
+
+        batchWithdrawStates[currentBatchId].totalShares += _shares;
+        userState.sharesAmount += _shares;
+        userState.batchId = currentBatchId;
+        userState.requestedAt = block.timestamp;
+    }
+
+
+// view rate, is 0 is pending
+
+    function withdraw() external nonReentrant {
+        WithdrawState storage userState = userWithdrawStates[msg.sender];
+        require(userState.sharesAmount > 0, "No shares to withdraw");
+        require(block.timestamp >= userState.requestedAt + TIMELOCK, "Withdrawal is still locked");
+
+        BatchState storage batchState = batchWithdrawStates[userState.batchId];
+        require(batchState.rate > 0, "Batch not resolved yet");
+
+        uint256 tokenAmount = _calcTokenFromShares(userState.sharesAmount);
+        
+        // Reset user's withdrawal state
+        userState.sharesAmount = 0;
+        userState.batchId = 0;
+        userState.requestedAt = 0;
+
+        // Update batch state
+        batchState.totalShares -= userState.sharesAmount;
+
+        _burn(msg.sender, userState.sharesAmount); // Burn shares after withdrawal
+        // Transfer base tokens to the user
+        baseToken.safeTransfer(msg.sender, tokenAmount);
+    }
+
+    //Fx Resolver start withdraw process and change batch id
+
+
+    //Fx Resolver to send funds and set rate for the batch
+
+    function cancelWithdraw() external nonReentrant {
+        WithdrawState storage userState = userWithdrawStates[msg.sender];
+        require(currentBatchId == userState.batchId, "Cannot cancel withdrawal in progress");
+        require(batchWithdrawStates[userState.batchId].rate != 0, "Batch already resolved");
+        require(userState.sharesAmount > 0, "No request to cancel");
+
+        userState.sharesAmount = 0;
+
+        //not needed ? is already re-initialized on the next request
+        userState.batchId = 0;
+        userState.requestedAt = 0;
+
+        // Update batch state
+        batchWithdrawStates[userState.batchId].totalShares -= userState.sharesAmount;
+    }
+
+
+
+
 
     function allowDeposit(address _user) external {
         require(msg.sender == address(tvlFeed), "Only Shift TVL feed can call this function");
         
         depositStates[_user].isPriceUpdated = true;
-        depositStates[_user].updatedAt = block.timestamp;
-        //Event or function with status update??
+        emit DepositAllowed(_user);
     }
 
 
+
+
+
+
+
+
+
+
+    //only admin to be added
+    function manageWhitelist(address _user) external {
+        if (_user == address(0)) {
+            whitelistEnabled = !whitelistEnabled;
+        }else{
+            isWhitelisted[_user] = !isWhitelisted[_user];
+        }
+    }
+
+
+    // Private
     function _calcSharesFromToken(uint256 _tokenAmount) private view returns (uint256) {
         (uint256 baseToken18Decimals, ) = _normalize(_tokenAmount, baseToken.decimals());
         (uint256 tvl18Decimals, ) = _normalize(tvlFeed.getLastTvl().value, tvlFeed.decimals());
