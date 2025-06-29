@@ -11,8 +11,8 @@ import { IShiftTvlFeed } from "./interface/IShiftTvlFeed.sol";
 
 // ✅ Possibility to deposit ERC20s 
 // ✅ 2 step deposit to update TVL first
-// Withdrawal request, with a lock of x days
-// Withdraw after x days
+// ✅ Withdrawal request, with a lock of x days
+// ✅ Withdraw after x days
 // Possibility to transfer data and tokens with an upgraded contract
 // ✅ TVL from external feed
 // ✅ Mint shares based on deposit
@@ -23,8 +23,10 @@ import { IShiftTvlFeed } from "./interface/IShiftTvlFeed.sol";
 // access control for the contract to implement
 // ✅ Whitelist of users that can deposit
 // enable permit ?
+// Send tokens to the resolver
+// Security
 
-// Need to track active users
+// ✅ Need to track active users
 // TVL limit
 // Clean code & optimization
 // Comments & Messages
@@ -33,7 +35,7 @@ contract ShiftVault is ERC20, ReentrancyGuard {
     using SafeERC20 for ERC20;
 
     bytes32 public constant EXECUTOR_ROLE = keccak256("EXECUTOR_ROLE");
-    uint256 public constant VALIDITY_DURATION = 20 seconds;
+    uint256 public constant VALIDITY_DURATION = 20 seconds; //??
     uint256 public constant TIMELOCK = 1 days;
 
     IAccessControl public immutable accessControlContract;
@@ -41,10 +43,11 @@ contract ShiftVault is ERC20, ReentrancyGuard {
     IShiftTvlFeed public immutable tvlFeed;
 
     // Mapping to track user deposits
-    // !!Review visinility
+    // !!Review visibility
     mapping(address => uint256) public userDeposits;
     mapping(address => DepositState) public depositStates;
 
+    //Configuration
     mapping(address => bool) public isWhitelisted;
     bool public whitelistEnabled;
     
@@ -53,6 +56,7 @@ contract ShiftVault is ERC20, ReentrancyGuard {
 
 
     uint256 public currentBatchId;
+    uint256 public tokenToBeWithdrawn; // total tokens to be withdrawn, needed for the oracle to calculate the correct TVL???
     mapping(uint256 => BatchState) public batchWithdrawStates; // total shares per batch
     mapping(address => WithdrawState) public userWithdrawStates; // user withdraw states
 
@@ -150,25 +154,18 @@ contract ShiftVault is ERC20, ReentrancyGuard {
         BatchState storage batchState = batchWithdrawStates[userState.batchId];
         require(batchState.rate > 0, "Batch not resolved yet");
 
-        uint256 tokenAmount = _calcTokenFromShares(userState.sharesAmount);
+        uint256 tokenAmount = _calcTokenFromShares(userState.sharesAmount, batchState.rate);
         
         // Reset user's withdrawal state
         userState.sharesAmount = 0;
-        userState.batchId = 0;
-        userState.requestedAt = 0;
 
         // Update batch state
-        batchState.totalShares -= userState.sharesAmount;
+        tokenToBeWithdrawn -= userState.sharesAmount;
 
         _burn(msg.sender, userState.sharesAmount); // Burn shares after withdrawal
         // Transfer base tokens to the user
         baseToken.safeTransfer(msg.sender, tokenAmount);
     }
-
-    //Fx Resolver start withdraw process and change batch id
-
-
-    //Fx Resolver to send funds and set rate for the batch
 
     function cancelWithdraw() external nonReentrant {
         WithdrawState storage userState = userWithdrawStates[msg.sender];
@@ -186,8 +183,60 @@ contract ShiftVault is ERC20, ReentrancyGuard {
         batchWithdrawStates[userState.batchId].totalShares -= userState.sharesAmount;
     }
 
+    //Fx Resolver start withdraw process and change batch id
+    //only Resolver to be added
+    function processWithdraw() external {
+        require(currentBatchId > 0, "No batch to process");
+
+        BatchState storage batchState = batchWithdrawStates[currentBatchId];
+        require(batchState.rate == 0, "Batch already resolved");
+
+        // Increment to the next batch ID
+        ++currentBatchId;
+    }
 
 
+    //Fx Resolver to send funds and set rate for the batch
+    //only Resolver to be added
+    function resolveWithdraw(uint256 _tokenAmount, uint256 _rate) external {
+        require(currentBatchId > 0, "No batch to resolve");
+        require(_rate > 0, "Rate must be greater than zero");
+
+        BatchState storage batchState = batchWithdrawStates[currentBatchId - 1];
+        require(batchState.rate == 0, "Batch already resolved");
+
+        tokenToBeWithdrawn += batchState.totalShares;
+
+        // Set the rate for the current batch
+        batchState.rate = _rate;
+
+        baseToken.safeTransferFrom(msg.sender, address(this), _tokenAmount);
+    }
+
+
+
+
+    //Fx return withdraw status
+    function getWithdrawStatus() external view returns (uint8 status, uint256 shareAmount, uint256 tokenAmount, uint256 unlockTime) {
+        WithdrawState storage userState = userWithdrawStates[msg.sender];
+        uint256 shares = userState.sharesAmount;
+        uint256 unlkTime = userState.requestedAt + TIMELOCK;
+        uint256 rate = batchWithdrawStates[userState.batchId].rate;
+
+        if (shares == 0) {
+            return (0, 0, 0, 0); // No withdrawal requested
+        }
+        if (rate == 0) {
+            return (1, shares, 0, unlkTime); // Withdrawal is pending
+        }
+        uint256 tkAmount = _calcTokenFromShares(shares, rate);
+        if (block.timestamp < unlkTime) {
+            return (2, shares, tkAmount, unlkTime); // Withdrawal is locked
+        }
+        return (3, shares, tkAmount, unlkTime); // Withdrawal can be processed
+    }
+    // Need to show for the user the withdraw available
+    //Fx deposit status??
 
 
     function allowDeposit(address _user) external {
@@ -226,12 +275,13 @@ contract ShiftVault is ERC20, ReentrancyGuard {
         return shares.unwrap(); // Convert UD60x18 to uint256 (18 decimals)
     }
 
-    function _calcTokenFromShares(uint256 _shareAmount) private view returns (uint256) {
+    //rate with 6 decimals
+    function _calcTokenFromShares(uint256 _shareAmount, uint256 _rate) private view returns (uint256) {
         (, uint8 baseTokenDecimalsTo18) = _normalize(_shareAmount, baseToken.decimals());
-        (uint256 tvl18Decimals, ) = _normalize(tvlFeed.getLastTvl().value, tvlFeed.decimals());
+        (uint256 rate18Decimals, ) = _normalize(_rate, tvlFeed.decimals());
 
-        UD60x18 ratio = ud(_shareAmount).div(ud(totalSupply()));
-        UD60x18 tokenAmount = ratio.mul(ud(tvl18Decimals));
+        UD60x18 ratio = ud(rate18Decimals);
+        UD60x18 tokenAmount = ratio.mul(ud(_shareAmount));
         return baseTokenDecimalsTo18 == 0 ? tokenAmount.unwrap() : tokenAmount.unwrap() / 10**baseTokenDecimalsTo18; // Convert UD60x18 to uint256 (Token decimals)
     }
 
