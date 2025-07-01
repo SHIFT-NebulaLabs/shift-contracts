@@ -13,20 +13,22 @@ import { IShiftTvlFeed } from "./interface/IShiftTvlFeed.sol";
 // ✅ 2 step deposit to update TVL first
 // ✅ Withdrawal request, with a lock of x days
 // ✅ Withdraw after x days
-// Possibility to transfer data and tokens with an upgraded contract
+// Possibility to transfer data and tokens with an upgraded contract or using UUPS?
 // ✅ TVL from external feed
 // ✅ Mint shares based on deposit
 // ✅ Share value based on TVL
 // Allocation of shares as a daily "Maintenance" fee for the treasury
-// Withdrawal fee ("Performance") for the treasury
-// track how many active users there are
+// ✅ Withdrawal fee ("Performance") for the treasury
 // access control for the contract to implement
 // ✅ Whitelist of users that can deposit
 // enable permit ?
-// Send tokens to the resolver
+// Send tokens to the resolver after deposit
 // Security
+// View user entry price?
+// Max TVL
+// Min deposit
 
-// ✅ Need to track active users
+// Need to track active users
 // TVL limit
 // Clean code & optimization
 // Comments & Messages
@@ -53,6 +55,11 @@ contract ShiftVault is ERC20, ReentrancyGuard {
     
     uint256 public activeUsers;
 
+    uint16 public performanceFee; // 1% = 100, 0.5% = 50, etc.
+    uint16 public annualMaintenanceFee; // 1% = 100, 0.5% = 50, etc.
+    address public treasuryRecipient; // Address to receive performance fees
+
+    uint256 public lastMaintenanceClaim;
 
 
     uint256 public currentBatchId;
@@ -64,7 +71,7 @@ contract ShiftVault is ERC20, ReentrancyGuard {
 
     // Events
     event DepositRequested(address indexed user);
-    event DepositAllowed(address indexed user);
+    event DepositAllowed(address indexed user, uint256 expirationTime);//To be verify how to identify the event specific request!!
 
     // Structs
     struct DepositState {
@@ -155,7 +162,9 @@ contract ShiftVault is ERC20, ReentrancyGuard {
         require(batchState.rate > 0, "Batch not resolved yet");
 
         uint256 tokenAmount = _calcTokenFromShares(userState.sharesAmount, batchState.rate);
-        
+
+        (uint256 feeAmount, uint256 userAmount) = _calcPerformanceFee(tokenAmount);
+
         // Reset user's withdrawal state
         userState.sharesAmount = 0;
 
@@ -164,7 +173,8 @@ contract ShiftVault is ERC20, ReentrancyGuard {
 
         _burn(msg.sender, userState.sharesAmount); // Burn shares after withdrawal
         // Transfer base tokens to the user
-        baseToken.safeTransfer(msg.sender, tokenAmount);
+        baseToken.safeTransfer(msg.sender, userAmount);
+        baseToken.safeTransfer(treasuryRecipient, feeAmount); // Transfer fee to the treasury
     }
 
     function cancelWithdraw() external nonReentrant {
@@ -213,8 +223,8 @@ contract ShiftVault is ERC20, ReentrancyGuard {
         baseToken.safeTransferFrom(msg.sender, address(this), _tokenAmount);
     }
 
-
-
+    //Only Admin
+    //Claim Maintenance fee
 
     //Fx return withdraw status
     function getWithdrawStatus() external view returns (uint8 status, uint256 shareAmount, uint256 tokenAmount, uint256 unlockTime) {
@@ -240,10 +250,10 @@ contract ShiftVault is ERC20, ReentrancyGuard {
 
 
     function allowDeposit(address _user) external {
-        require(msg.sender == address(tvlFeed), "Only Shift TVL feed can call this function");
-        
-        depositStates[_user].isPriceUpdated = true;
-        emit DepositAllowed(_user);
+        require(msg.sender == address(tvlFeed), "Only TVL feed");
+        DepositState storage state = depositStates[_user];
+        state.isPriceUpdated = true;
+        emit DepositAllowed(_user, state.expirationTime);
     }
 
 
@@ -288,6 +298,11 @@ contract ShiftVault is ERC20, ReentrancyGuard {
     function _normalize(uint256 _amount, uint8 _decimals) private view returns (uint256 amount, uint8 decimalsTo18) {
         amount = _decimals == 18 ? _amount : _amount * 10**(decimals() - _decimals);
         decimalsTo18 = _decimals < decimals() ? decimals() - _decimals : 0;
+    }
+
+    function _calcPerformanceFee(uint256 _tokenAmount) private view returns (uint256 feeAmount, uint256 userAmount) {
+        feeAmount = (_tokenAmount * uint256(performanceFee)) / 10000; // 1% fee
+        userAmount = _tokenAmount - feeAmount;
     }
 
     function _isExpired() public view returns(bool) {
