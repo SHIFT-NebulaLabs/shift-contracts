@@ -6,8 +6,9 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import { UD60x18, ud } from "@prb/math/src/UD60x18.sol";
-
 import { IShiftTvlFeed } from "./interface/IShiftTvlFeed.sol";
+import { ShiftModifier } from "./utils/Modifier.sol";
+import { VALIDITY_DURATION, TIMELOCK } from "./utils/Constants.sol";
 
 // ✅ Possibility to deposit ERC20s 
 // ✅ 2 step deposit to update TVL first
@@ -17,28 +18,28 @@ import { IShiftTvlFeed } from "./interface/IShiftTvlFeed.sol";
 // ✅ TVL from external feed
 // ✅ Mint shares based on deposit
 // ✅ Share value based on TVL
-// Allocation of shares as a daily "Maintenance" fee for the treasury
+// ✅ Allocation of shares as a daily "Maintenance" fee for the treasury
 // ✅ Withdrawal fee ("Performance") for the treasury
-// access control for the contract to implement
+// ✅ access control for the contract to implement
 // ✅ Whitelist of users that can deposit
 // enable permit ?
-// Send tokens to the resolver after deposit
+// ✅ Send tokens to the resolver after deposit
 // Security
 // View user entry price?
-// Max TVL
-// Min deposit
-
+// Pause contract
+// ✅ Max TVL
+// ✅ Min deposit
+// Fx to modify configuration
 // Need to track active users
-// TVL limit
+
 // Clean code & optimization
+// Review require statements
 // Comments & Messages
 
-contract ShiftVault is ERC20, ReentrancyGuard {
+contract ShiftVault is ShiftModifier, ERC20, ReentrancyGuard {
     using SafeERC20 for ERC20;
 
-    bytes32 public constant EXECUTOR_ROLE = keccak256("EXECUTOR_ROLE");
-    uint256 public constant VALIDITY_DURATION = 20 seconds; //??
-    uint256 public constant TIMELOCK = 1 days;
+
 
     IAccessControl public immutable accessControlContract;
     ERC20 public immutable baseToken;
@@ -55,11 +56,13 @@ contract ShiftVault is ERC20, ReentrancyGuard {
     
     uint256 public activeUsers;
 
-    uint16 public performanceFee; // 1% = 100, 0.5% = 50, etc.
-    uint16 public annualMaintenanceFee; // 1% = 100, 0.5% = 50, etc.
+    uint16 public performanceFee; // 1% = 100, 0.5% = 50, etc. -- (_bps * 1e18) / 10_000;
+    uint16 public maintenanceFeePerSecond; // 1% = 100, 0.5% = 50, etc. -- (_bps * 1e18) / 10_000 = Annual fee --> Annual fee / (SECONDS_IN_YEAR * 1e18) = Seconds fee;
     address public treasuryRecipient; // Address to receive performance fees
+    uint256 public minDeposit; // Minimum deposit amount
+    uint256 public maxTvl; // Maximum TVL limit
 
-    uint256 public lastMaintenanceClaim;
+    uint256 public lastMaintenanceFeeClaimedAt;
 
 
     uint256 public currentBatchId;
@@ -91,7 +94,7 @@ contract ShiftVault is ERC20, ReentrancyGuard {
     }
 
 
-    constructor(address _accessControlContract, address _tokenContract, address _shiftTvlFeedContract) ERC20("Shift LP", "SLP") {
+    constructor(address _accessControlContract, address _tokenContract, address _shiftTvlFeedContract) ERC20("Shift LP", "SLP") ShiftModifier(_accessControlContract) {
         require(_accessControlContract != address(0), "Access control contract address cannot be zero");
         require(_tokenContract != address(0), "Token contract address cannot be zero");
         require(_shiftTvlFeedContract != address(0), "Shift TVL feed contract address cannot be zero");
@@ -116,8 +119,8 @@ contract ShiftVault is ERC20, ReentrancyGuard {
 
 
     function Deposit(uint256 _amount) external nonReentrant {
-        //min based on TVL ??
-        require(_amount > 0, "Deposit amount must be greater than zero");
+        require(_amount >= minDeposit, "Deposit amount is below the minimum required");
+        require(tvlFeed.getLastTvl().value + _amount <= maxTvl, "Deposit exceeds maximum TVL limit");
         require(depositStates[msg.sender].isPriceUpdated && !_isExpired(), "Deposit request not found or expired");
         //Allowance and balance checks are handled by SafeERC20
 
@@ -193,9 +196,42 @@ contract ShiftVault is ERC20, ReentrancyGuard {
         batchWithdrawStates[userState.batchId].totalShares -= userState.sharesAmount;
     }
 
+
+
+
+
+
+    function allowDeposit(address _user) external {
+        require(msg.sender == address(tvlFeed), "Only TVL feed");
+        DepositState storage state = depositStates[_user];
+        state.isPriceUpdated = true;
+        emit DepositAllowed(_user, state.expirationTime);
+    }
+
+
+
+    //only admin to be added, to be moved to a specific contract
+    function manageWhitelist(address _user) external {
+        if (_user == address(0)) {
+            whitelistEnabled = !whitelistEnabled;
+        }else{
+            isWhitelisted[_user] = !isWhitelisted[_user];
+        }
+    }
+    // Only Admin
+    // Claim Maintenance fee
+    function claimMaintenanceFee() external onlyAdmin {
+        require(lastMaintenanceFeeClaimedAt < block.timestamp, "Maintenance fee already claimed for this period");
+
+        uint256 feeAmount = _calcMaintenanceFee(lastMaintenanceFeeClaimedAt);
+        lastMaintenanceFeeClaimedAt = block.timestamp;
+
+        _mint(treasuryRecipient, feeAmount);
+    }
+
     //Fx Resolver start withdraw process and change batch id
     //only Resolver to be added
-    function processWithdraw() external {
+    function processWithdraw() external onlyExecutor {
         require(currentBatchId > 0, "No batch to process");
 
         BatchState storage batchState = batchWithdrawStates[currentBatchId];
@@ -208,7 +244,7 @@ contract ShiftVault is ERC20, ReentrancyGuard {
 
     //Fx Resolver to send funds and set rate for the batch
     //only Resolver to be added
-    function resolveWithdraw(uint256 _tokenAmount, uint256 _rate) external {
+    function resolveWithdraw(uint256 _tokenAmount, uint256 _rate) external onlyExecutor {
         require(currentBatchId > 0, "No batch to resolve");
         require(_rate > 0, "Rate must be greater than zero");
 
@@ -223,9 +259,17 @@ contract ShiftVault is ERC20, ReentrancyGuard {
         baseToken.safeTransferFrom(msg.sender, address(this), _tokenAmount);
     }
 
-    //Only Admin
-    //Claim Maintenance fee
+    //Only Resolver
+    function sendFundsToResolver(uint256 _tokenAmount) external onlyExecutor {
+        require(_tokenAmount > 0, "Token amount must be greater than zero");
 
+        // Transfer the specified amount of tokens to the resolver
+        baseToken.safeTransfer(msg.sender, _tokenAmount);
+    }
+
+
+
+    //View functions
     //Fx return withdraw status
     function getWithdrawStatus() external view returns (uint8 status, uint256 shareAmount, uint256 tokenAmount, uint256 unlockTime) {
         WithdrawState storage userState = userWithdrawStates[msg.sender];
@@ -248,31 +292,6 @@ contract ShiftVault is ERC20, ReentrancyGuard {
     // Need to show for the user the withdraw available
     //Fx deposit status??
 
-
-    function allowDeposit(address _user) external {
-        require(msg.sender == address(tvlFeed), "Only TVL feed");
-        DepositState storage state = depositStates[_user];
-        state.isPriceUpdated = true;
-        emit DepositAllowed(_user, state.expirationTime);
-    }
-
-
-
-
-
-
-
-
-
-
-    //only admin to be added
-    function manageWhitelist(address _user) external {
-        if (_user == address(0)) {
-            whitelistEnabled = !whitelistEnabled;
-        }else{
-            isWhitelisted[_user] = !isWhitelisted[_user];
-        }
-    }
 
 
     // Private
@@ -301,8 +320,17 @@ contract ShiftVault is ERC20, ReentrancyGuard {
     }
 
     function _calcPerformanceFee(uint256 _tokenAmount) private view returns (uint256 feeAmount, uint256 userAmount) {
-        feeAmount = (_tokenAmount * uint256(performanceFee)) / 10000; // 1% fee
-        userAmount = _tokenAmount - feeAmount;
+        UD60x18 fee = ud(_tokenAmount).mul(ud(uint256(performanceFee))); // 1% fee
+        feeAmount = fee.unwrap(); // Convert UD60x18 to uint256 (18 decimals)
+        userAmount = ud(_tokenAmount).sub(fee).unwrap();
+    }
+
+    function _calcMaintenanceFee(uint256 _lastClaimTimestamp) private view returns (uint256) {
+        (uint256 tvl18Decimals, ) = _normalize(tvlFeed.getLastTvl().value, tvlFeed.decimals());
+        uint256 elapsed = block.timestamp - _lastClaimTimestamp;
+
+        UD60x18 feePerSecond = ud(tvl18Decimals).mul(ud(maintenanceFeePerSecond));
+        return feePerSecond.mul(ud(elapsed)).unwrap();
     }
 
     function _isExpired() public view returns(bool) {
