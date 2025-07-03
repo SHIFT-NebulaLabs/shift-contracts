@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import "@openzeppelin/contracts/access/IAccessControl.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import { UD60x18, ud } from "@prb/math/src/UD60x18.sol";
 import { IShiftTvlFeed } from "./interface/IShiftTvlFeed.sol";
-import { ShiftModifier } from "./utils/Modifier.sol";
+import { AccessModifier } from "./utils/AccessModifier.sol";
+import { ShiftManager } from "./config/ShiftManager.sol";
 import { VALIDITY_DURATION, TIMELOCK } from "./utils/Constants.sol";
 
 // ✅ Possibility to deposit ERC20s 
@@ -30,37 +30,24 @@ import { VALIDITY_DURATION, TIMELOCK } from "./utils/Constants.sol";
 // ✅ Max TVL
 // ✅ Min deposit
 // Fx to modify configuration
-// Need to track active users
+// ✅ Need to track active users
 
 // Clean code & optimization
 // Review require statements
 // Comments & Messages
 
-contract ShiftVault is ShiftModifier, ERC20, ReentrancyGuard {
+contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
     using SafeERC20 for ERC20;
 
 
-
-    IAccessControl public immutable accessControlContract;
     ERC20 public immutable baseToken;
     IShiftTvlFeed public immutable tvlFeed;
 
     // Mapping to track user deposits
     // !!Review visibility
-    mapping(address => uint256) public userDeposits;
     mapping(address => DepositState) public depositStates;
-
-    //Configuration
-    mapping(address => bool) public isWhitelisted;
-    bool public whitelistEnabled;
     
     uint256 public activeUsers;
-
-    uint16 public performanceFee; // 1% = 100, 0.5% = 50, etc. -- (_bps * 1e18) / 10_000;
-    uint16 public maintenanceFeePerSecond; // 1% = 100, 0.5% = 50, etc. -- (_bps * 1e18) / 10_000 = Annual fee --> Annual fee / (SECONDS_IN_YEAR * 1e18) = Seconds fee;
-    address public treasuryRecipient; // Address to receive performance fees
-    uint256 public minDeposit; // Minimum deposit amount
-    uint256 public maxTvl; // Maximum TVL limit
 
     uint256 public lastMaintenanceFeeClaimedAt;
 
@@ -74,7 +61,7 @@ contract ShiftVault is ShiftModifier, ERC20, ReentrancyGuard {
 
     // Events
     event DepositRequested(address indexed user);
-    event DepositAllowed(address indexed user, uint256 expirationTime);//To be verify how to identify the event specific request!!
+    event DepositAllowed(address indexed user, uint256 expirationTime);
 
     // Structs
     struct DepositState {
@@ -94,11 +81,9 @@ contract ShiftVault is ShiftModifier, ERC20, ReentrancyGuard {
     }
 
 
-    constructor(address _accessControlContract, address _tokenContract, address _shiftTvlFeedContract) ERC20("Shift LP", "SLP") ShiftModifier(_accessControlContract) {
-        require(_accessControlContract != address(0), "Access control contract address cannot be zero");
+    constructor(address _accessControlContract, address _tokenContract, address _shiftTvlFeedContract) ShiftManager(_accessControlContract) ERC20("Shift LP", "SLP") {
         require(_tokenContract != address(0), "Token contract address cannot be zero");
         require(_shiftTvlFeedContract != address(0), "Shift TVL feed contract address cannot be zero");
-        accessControlContract = IAccessControl(_accessControlContract);
         baseToken = ERC20(_tokenContract);
         tvlFeed = IShiftTvlFeed(_shiftTvlFeedContract);
         whitelistEnabled = true;
@@ -119,14 +104,13 @@ contract ShiftVault is ShiftModifier, ERC20, ReentrancyGuard {
 
 
     function Deposit(uint256 _amount) external nonReentrant {
-        require(_amount >= minDeposit, "Deposit amount is below the minimum required");
+        require(_amount >= minDepositAmount, "Deposit amount is below the minimum required");
         require(tvlFeed.getLastTvl().value + _amount <= maxTvl, "Deposit exceeds maximum TVL limit");
         require(depositStates[msg.sender].isPriceUpdated && !_isExpired(), "Deposit request not found or expired");
         //Allowance and balance checks are handled by SafeERC20
 
         depositStates[msg.sender].isPriceUpdated = false; // Reset state after finalizing deposit
         baseToken.safeTransferFrom(msg.sender, address(this), _amount);
-        userDeposits[msg.sender] += _amount;///needed??
         
         if (tvlFeed.getLastTvl().value == 0 || totalSupply() == 0) {
             (, uint8 baseTokenDecimalsTo18) = _normalize(_amount, baseToken.decimals());
@@ -178,6 +162,13 @@ contract ShiftVault is ShiftModifier, ERC20, ReentrancyGuard {
         // Transfer base tokens to the user
         baseToken.safeTransfer(msg.sender, userAmount);
         baseToken.safeTransfer(treasuryRecipient, feeAmount); // Transfer fee to the treasury
+
+        if(balanceOf(msg.sender) == 0) {
+            unchecked {
+                --activeUsers; // Decrease active users count
+            }
+        }
+
     }
 
     function cancelWithdraw() external nonReentrant {
@@ -210,15 +201,6 @@ contract ShiftVault is ShiftModifier, ERC20, ReentrancyGuard {
 
 
 
-    //only admin to be added, to be moved to a specific contract
-    function manageWhitelist(address _user) external {
-        if (_user == address(0)) {
-            whitelistEnabled = !whitelistEnabled;
-        }else{
-            isWhitelisted[_user] = !isWhitelisted[_user];
-        }
-    }
-    // Only Admin
     // Claim Maintenance fee
     function claimMaintenanceFee() external onlyAdmin {
         require(lastMaintenanceFeeClaimedAt < block.timestamp, "Maintenance fee already claimed for this period");
@@ -320,7 +302,7 @@ contract ShiftVault is ShiftModifier, ERC20, ReentrancyGuard {
     }
 
     function _calcPerformanceFee(uint256 _tokenAmount) private view returns (uint256 feeAmount, uint256 userAmount) {
-        UD60x18 fee = ud(_tokenAmount).mul(ud(uint256(performanceFee))); // 1% fee
+        UD60x18 fee = ud(_tokenAmount).mul(ud(performanceFeeBps)); // 1% fee
         feeAmount = fee.unwrap(); // Convert UD60x18 to uint256 (18 decimals)
         userAmount = ud(_tokenAmount).sub(fee).unwrap();
     }
@@ -329,7 +311,7 @@ contract ShiftVault is ShiftModifier, ERC20, ReentrancyGuard {
         (uint256 tvl18Decimals, ) = _normalize(tvlFeed.getLastTvl().value, tvlFeed.decimals());
         uint256 elapsed = block.timestamp - _lastClaimTimestamp;
 
-        UD60x18 feePerSecond = ud(tvl18Decimals).mul(ud(maintenanceFeePerSecond));
+        UD60x18 feePerSecond = ud(tvl18Decimals).mul(ud(maintenanceFeeBpsPerSecond));
         return feePerSecond.mul(ud(elapsed)).unwrap();
     }
 
