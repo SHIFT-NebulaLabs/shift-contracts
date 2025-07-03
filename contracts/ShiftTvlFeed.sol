@@ -1,12 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import "@openzeppelin/contracts/access/IAccessControl.sol";
 import { IShiftVault } from "./interface/IShiftVault.sol";
-import { ShiftModifier } from "./utils/Modifier.sol";
+import { AccessModifier } from "./utils/AccessModifier.sol";
 
-contract ShiftTvlFeed is ShiftModifier {
-    IAccessControl public immutable accessControlContract;
+contract ShiftTvlFeed is AccessModifier {
     IShiftVault public shiftVault;
 
     struct TvlData {
@@ -19,9 +17,7 @@ contract ShiftTvlFeed is ShiftModifier {
 
     event TvlUpdated(uint256 newValue);
 
-    constructor(address _accessControlContract) ShiftModifier(_accessControlContract) {
-        require(_accessControlContract != address(0), "Access control contract address cannot be zero");
-        accessControlContract = IAccessControl(_accessControlContract);
+    constructor(address _accessControlContract) AccessModifier(_accessControlContract) {
     }
 
     function initialize(address _shiftVaultContract) external {
