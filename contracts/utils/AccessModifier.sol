@@ -2,7 +2,7 @@
 pragma solidity ^0.8.28;
 
 import { IAccessControl } from "@openzeppelin/contracts/access/IAccessControl.sol";
-//Verify origin??
+
 abstract contract AccessModifier {
     bytes32 private constant DEFAULT_ADMIN_ROLE = 0x00;
     IAccessControl public immutable accessControlContract;
@@ -19,7 +19,6 @@ abstract contract AccessModifier {
         );
         _;
     }
-    // Modifier to check if the caller has the oracle role
     modifier onlyOracle() {
         require(
             accessControlContract.hasRole(keccak256("ORACLE_ROLE"), msg.sender),
@@ -27,8 +26,6 @@ abstract contract AccessModifier {
         );
         _;
     }
-
-    // Modifier to check if the caller has the executor role
     modifier onlyExecutor() {
         require(
             accessControlContract.hasRole(keccak256("EXECUTOR_ROLE"), msg.sender),
