@@ -8,28 +8,27 @@ import { SECONDS_IN_YEAR } from "../utils/Constants.sol";
 
 abstract contract ShiftManager is AccessModifier {
 
-    mapping(address => bool) public isWhitelisted;
-
-    address public treasuryRecipient;
-
-    bool public whitelistEnabled;
+    bool internal whitelistEnabled;
     bool public paused;
+    uint256 public performanceFeeBps; // 1% is 100, then performanceFeeBps will be 1e16 (0.01 * 1e18)
+    uint256 public maintenanceFeeBpsPerSecond; // 1% is 100, then maintenanceFeeBpsPerSecond will be 1e16 / SECONDS_IN_YEAR
+    uint256 public minDepositAmount; //BaseToken Precision
+    uint256 public maxTvl; //Tvl precision
+    address public feeCollector;
 
-    uint256 public performanceFeeBps;// 1% = 100, 0.5% = 50, etc. -- (_bps * 1e18) / 10_000;
-    uint256 public maintenanceFeeBpsPerSecond; // 1% = 100, 0.5% = 50, etc. -- (_bps * 1e18) / 10_000 = Annual fee --> Annual fee / (SECONDS_IN_YEAR * 1e18) = Seconds fee;
-
-    uint256 public minDepositAmount;
-    uint256 public maxTvl;
+    mapping(address => bool) internal isWhitelisted;
 
     modifier notPaused() {
         require(!paused, "Contract is paused");
         _;
     }
 
-    constructor(address _accessControlContract, address _tresuryRecipient) AccessModifier(_accessControlContract) {
+    constructor(address _accessControlContract, address _feeCollector, uint256 _minDeposit, uint256 _maxTvl) AccessModifier(_accessControlContract) {
         require(_accessControlContract != address(0), "Access control contract address cannot be zero");
-        require(_tresuryRecipient != address(0), "Tresury address cannot be zero");
-        treasuryRecipient = _tresuryRecipient;
+        require(_feeCollector != address(0), "Fee collector address cannot be zero");
+        feeCollector = _feeCollector;
+        minDepositAmount = _minDeposit;
+        maxTvl = _maxTvl;
         whitelistEnabled = true;
         paused = true;
     }
@@ -39,7 +38,9 @@ abstract contract ShiftManager is AccessModifier {
     }
 
     function releasePause() external {
-        require(condition);
+        require(performanceFeeBps != 0, "Performance fee not set");
+        require(maintenanceFeeBpsPerSecond != 0, "Maintenance fee not set");
+        paused = false;
     }
 
 
@@ -51,9 +52,9 @@ abstract contract ShiftManager is AccessModifier {
         }
     }
 
-    function upgradeTresuryRecipient(address _newTresuryRecipient) external onlyAdmin {
-        require(_newTresuryRecipient != address(0), "Tresury address cannot be zero");
-        treasuryRecipient = _newTresuryRecipient;
+    function upgradeFeeCollector(address _newFeeCollector) external onlyAdmin {
+        require(_newFeeCollector != address(0), "Fee collector address cannot be zero");
+        feeCollector = _newFeeCollector;
     }
 
 
