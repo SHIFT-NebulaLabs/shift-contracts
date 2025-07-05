@@ -13,33 +13,40 @@ contract ShiftTvlFeed is AccessModifier {
     }
 
     TvlData[] private tvlHistory_;
-    bool public initialized;
+    bool public init;
 
-    event TvlUpdated(uint256 newValue);
+    event TvlUpdated(uint256 newValue, uint256 timestamp);
+
+    modifier initialized() {
+        require(init, "ShiftTvlFeed: not initialized");
+        _;
+    }
 
     constructor(address _accessControlContract) AccessModifier(_accessControlContract) {
+        require(_accessControlContract != address(0), "ShiftTvlFeed: zero access control address");
     }
 
     function initialize(address _shiftVaultContract) external {
-        require(!initialized, "Contract is already initialized");
-        require(_shiftVaultContract != address(0), "Shift vault address cannot be zero");
+        require(!init, "ShiftTvlFeed: already initialized");
+        require(_shiftVaultContract != address(0), "ShiftTvlFeed: zero vault address");
         shiftVault = IShiftVault(_shiftVaultContract);
-        initialized = true;
+        init = true;
     }
 
-    function updateTvl(uint256 _value) external onlyOracle {
+    function updateTvl(uint256 _value) external onlyOracle initialized {
         tvlHistory_.push(TvlData({ value: _value, timestamp: block.timestamp }));
-        emit TvlUpdated(_value);
+        emit TvlUpdated(_value, block.timestamp);
     }
 
-    function updateTvlForDeposit(address _user, uint256 _value) external onlyOracle {
+    function updateTvlForDeposit(address _user, uint256 _value) external onlyOracle initialized {
+        require(_user != address(0), "ShiftTvlFeed: zero user address");
+        require(_value > 0, "ShiftTvlFeed: TVL must be positive");
         tvlHistory_.push(TvlData({ value: _value, timestamp: block.timestamp }));
         shiftVault.allowDeposit(_user);
-        emit TvlUpdated(_value);
+        emit TvlUpdated(_value, block.timestamp);
     }
 
-
-    function decimals() public view virtual returns (uint8) {
+    function decimals() external pure returns (uint8) {
         return 6;
     }
 
@@ -51,6 +58,7 @@ contract ShiftTvlFeed is AccessModifier {
 
     function getLastTvlEntries(uint256 _count) external view returns (TvlData[] memory) {
         uint256 len = tvlHistory_.length;
+        require(_count > 0, "ShiftTvlFeed: count must be positive");
         if (_count > len) _count = len;
         TvlData[] memory result = new TvlData[](_count);
         for (uint256 i = 0; i < _count; i++) {

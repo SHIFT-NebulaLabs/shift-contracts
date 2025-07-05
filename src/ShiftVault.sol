@@ -7,7 +7,7 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import { UD60x18, ud } from "@prb/math/src/UD60x18.sol";
 import { IShiftTvlFeed } from "./interface/IShiftTvlFeed.sol";
 import { AccessModifier } from "./utils/AccessModifier.sol";
-import { ShiftManager } from "./config/ShiftManager.sol";
+import { ShiftManager } from "./ShiftManager.sol";
 import { VALIDITY_DURATION, TIMELOCK } from "./utils/Constants.sol";
 
 contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
@@ -25,12 +25,10 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
     mapping(address => WithdrawState) private userWithdrawStates;
     mapping(address => DepositState) private depositStates;
 
-    // Events
     event DepositRequested(address indexed user);
     event DepositAllowed(address indexed user, uint256 expirationTime);
     event Deposited(address indexed user, uint256 amount);
 
-    // Structs
     struct DepositState {
         bool isPriceUpdated;
         uint256 expirationTime;
@@ -71,43 +69,49 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
     // Add a time lock to avoid potential DDOS attacks
     function reqDeposit() external nonReentrant {
         require(isWhitelisted[msg.sender] || !whitelistEnabled, "ShiftVault: not whitelisted");
-        require(!depositStates[msg.sender].isPriceUpdated, "ShiftVault: deposit request already exists");
+        DepositState storage state = depositStates[msg.sender];
+        require(!state.isPriceUpdated, "ShiftVault: deposit request already exists");
         require(_isExpired(), "ShiftVault: deposit request still valid");
 
+        state.expirationTime = block.timestamp + VALIDITY_DURATION;
         emit DepositRequested(msg.sender);
-
-        depositStates[msg.sender].expirationTime = block.timestamp + VALIDITY_DURATION;
     }
 
 
-    function Deposit(uint256 _tokenAmount) external nonReentrant notPaused {
+    function deposit(uint256 _tokenAmount) external nonReentrant notPaused {
         require(_tokenAmount >= minDepositAmount, "ShiftVault: deposit below minimum");
         require(tvlFeed.getLastTvl().value + _tokenAmount <= maxTvl, "ShiftVault: exceeds max TVL");
-        require(depositStates[msg.sender].isPriceUpdated && !_isExpired(), "ShiftVault: no valid deposit request");
-        // Allowance and balance checks are handled by SafeERC20
+        DepositState storage state = depositStates[msg.sender];
+        require(state.isPriceUpdated && !_isExpired(), "ShiftVault: no valid deposit request");
 
-        depositStates[msg.sender].isPriceUpdated = false; // Reset state after finalizing deposit
+        state.isPriceUpdated = false; // Reset state after deposit
         baseToken.safeTransferFrom(msg.sender, address(this), _tokenAmount);
 
+        uint256 shares;
         if (tvlFeed.getLastTvl().value == 0 || totalSupply() == 0) {
             (uint256 baseToken18Decimals, ) = _normalize(_tokenAmount, baseToken.decimals());
-            _mint(msg.sender, baseToken18Decimals);
+            shares = baseToken18Decimals;
         } else {
-            _mint(msg.sender, _calcSharesFromToken(_tokenAmount));
+            shares = _calcSharesFromToken(_tokenAmount);
         }
-        unchecked {
-            ++activeUsers; // Increment active users count
+        _mint(msg.sender, shares);
+
+        if (balanceOf(msg.sender) == shares) {
+            unchecked { ++activeUsers; }
         }
         emit Deposited(msg.sender, _tokenAmount);
     }
 
     function reqWithdraw(uint256 _shareAmount) external nonReentrant {
-        WithdrawState storage userState = userWithdrawStates[msg.sender];
         require(_shareAmount > 0, "ShiftVault: zero shares");
         require(balanceOf(msg.sender) >= _shareAmount, "ShiftVault: insufficient shares");
+
+        WithdrawState storage userState = userWithdrawStates[msg.sender];
         require(userState.sharesAmount == 0, "ShiftVault: withdraw already requested");
 
-        batchWithdrawStates[currentBatchId].totalShares += _shareAmount;
+        BatchState storage batchState = batchWithdrawStates[currentBatchId];
+        batchState.totalShares += _shareAmount;
+
         userState.sharesAmount = _shareAmount;
         userState.batchId = currentBatchId;
         userState.requestedAt = block.timestamp;
@@ -118,14 +122,15 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
 
     function withdraw() external nonReentrant notPaused {
         WithdrawState storage userState = userWithdrawStates[msg.sender];
-        require(userState.sharesAmount > 0, "ShiftVault: no shares to withdraw");
+        uint256 shares = userState.sharesAmount;
+        require(shares > 0, "ShiftVault: no shares to withdraw");
         require(block.timestamp >= userState.requestedAt + TIMELOCK, "ShiftVault: withdrawal locked");
 
         BatchState storage batchState = batchWithdrawStates[userState.batchId];
-        require(batchState.rate > 0, "ShiftVault: batch not resolved");
+        uint256 rate = batchState.rate;
+        require(rate > 0, "ShiftVault: batch not resolved");
 
-        uint256 shares = userState.sharesAmount;
-        uint256 tokenAmount = _calcTokenFromShares(shares, batchState.rate);
+        uint256 tokenAmount = _calcTokenFromShares(shares, rate);
         (uint256 feeAmount, uint256 userAmount) = _calcPerformanceFee(tokenAmount);
 
         // Reset user's withdrawal state before external calls
@@ -136,36 +141,29 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
         // Update batch state
         amountReadyForWithdraw -= shares;
 
-        _burn(msg.sender, shares); // Burn shares after withdrawal
+        _burn(msg.sender, shares);
 
         // Transfer base tokens to the user and feeCollector
-        baseToken.safeTransfer(msg.sender, userAmount);
-        if (feeAmount > 0) {
-            baseToken.safeTransfer(feeCollector, feeAmount);
-        }
+        if (userAmount > 0) baseToken.safeTransfer(msg.sender, userAmount);
+        if (feeAmount > 0) baseToken.safeTransfer(feeCollector, feeAmount);
 
-        if (balanceOf(msg.sender) == 0) {
-            unchecked {
-                --activeUsers;
-            }
+        if (balanceOf(msg.sender) == 0 && activeUsers > 0) {
+            unchecked { --activeUsers; }
         }
     }
-
     function cancelWithdraw() external nonReentrant {
         WithdrawState storage userState = userWithdrawStates[msg.sender];
+        require(userState.sharesAmount > 0, "ShiftVault: no withdrawal request to cancel");
         require(currentBatchId == userState.batchId, "ShiftVault: cannot cancel, withdrawal already processing");
         require(batchWithdrawStates[userState.batchId].rate == 0, "ShiftVault: batch already resolved");
-        require(userState.sharesAmount > 0, "ShiftVault: no withdrawal request to cancel");
 
-        uint256 sharesToRemove = userState.sharesAmount;
+        // Update batch state before resetting user state
+        batchWithdrawStates[userState.batchId].totalShares -= userState.sharesAmount;
 
         // Reset user state
         userState.sharesAmount = 0;
         userState.batchId = 0;
         userState.requestedAt = 0;
-
-        // Update batch state
-        batchWithdrawStates[currentBatchId].totalShares -= sharesToRemove;
     }
 
 
@@ -176,8 +174,7 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
     function allowDeposit(address _user) external {
         require(msg.sender == address(tvlFeed), "ShiftVault: caller is not TVL feed");
         DepositState storage state = depositStates[_user];
-        require(!state.isPriceUpdated, "ShiftVault: deposit already allowed");
-        require(state.expirationTime > block.timestamp, "ShiftVault: deposit request expired");
+        if (state.isPriceUpdated || state.expirationTime <= block.timestamp) return;
         state.isPriceUpdated = true;
         emit DepositAllowed(_user, state.expirationTime);
     }
@@ -186,35 +183,42 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
 
     // Claim Maintenance fee
     function claimMaintenanceFee() external onlyAdmin {
-        require(lastMaintenanceFeeClaimedAt < block.timestamp, "ShiftVault: maintenance fee already claimed for this period");
+        uint256 lastClaimed = lastMaintenanceFeeClaimedAt;
+        uint256 nowTs = block.timestamp;
+        require(nowTs > lastClaimed, "ShiftVault: already claimed for this period");
 
-        uint256 feeAmount = _calcMaintenanceFee(lastMaintenanceFeeClaimedAt);
-        lastMaintenanceFeeClaimedAt = block.timestamp;
+        uint256 feeAmount = _calcMaintenanceFee(lastClaimed);
+        if (feeAmount == 0) return;
 
+        lastMaintenanceFeeClaimedAt = nowTs;
         _mint(feeCollector, feeAmount);
     }
-
 
     function processWithdraw() external onlyExecutor {
         BatchState storage batchState = batchWithdrawStates[currentBatchId];
         require(batchState.rate == 0, "ShiftVault: batch already resolved");
 
-        // Increment to the next batch ID
-        ++currentBatchId;
+        // Move to the next batch only if there are shares to process
+        if (batchState.totalShares > 0) {
+            ++currentBatchId;
+        }
     }
 
     function resolveWithdraw(uint256 _tokenAmount, uint256 _rate) external onlyExecutor notPaused {
         require(_rate > 0, "ShiftVault: invalid rate");
-        
-        BatchState storage batchState = batchWithdrawStates[currentBatchId - 1];
+
+        uint256 batchId = currentBatchId - 1;
+        BatchState storage batchState = batchWithdrawStates[batchId];
         require(batchState.rate == 0, "ShiftVault: batch already resolved");
 
-        amountReadyForWithdraw += batchState.totalShares;
-
-        // Set the rate for the current batch
-        batchState.rate = _rate;
-
-        baseToken.safeTransferFrom(msg.sender, address(this), _tokenAmount);
+        uint256 totalShares = batchState.totalShares;
+        if (totalShares > 0) {
+            amountReadyForWithdraw += totalShares;
+            batchState.rate = _rate;
+            if (_tokenAmount > 0) {
+                baseToken.safeTransferFrom(msg.sender, address(this), _tokenAmount);
+            }
+        }
     }
 
     //Only Resolver
@@ -227,26 +231,29 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
 
     //View functions
     //Fx return withdraw status
-    function getWithdrawStatus() external view returns (uint8 status, uint256 shareAmount, uint256 tokenAmount, uint256 unlockTime) {
+    function getWithdrawStatus() external view returns (
+        uint8 status,
+        uint256 shareAmount,
+        uint256 tokenAmount,
+        uint256 unlockTime
+    ) {
         WithdrawState storage userState = userWithdrawStates[msg.sender];
         uint256 shares = userState.sharesAmount;
-        uint256 unlkTime = userState.requestedAt + TIMELOCK;
-        uint256 rate = batchWithdrawStates[userState.batchId].rate;
+        if (shares == 0) return (0, 0, 0, 0); // No withdrawal requested
 
-        if (shares == 0) {
-            return (0, 0, 0, 0); // No withdrawal requested
-        }
-        if (rate == 0) {
-            return (1, shares, 0, unlkTime); // Withdrawal pending batch resolution
-        }
+        uint256 batchId = userState.batchId;
+        uint256 rate = batchWithdrawStates[batchId].rate;
+        uint256 unlkTime = userState.requestedAt + TIMELOCK;
+
+        if (rate == 0) return (1, shares, 0, unlkTime); // Pending batch resolution
+
         uint256 tkAmount = _calcTokenFromShares(shares, rate);
-        if (block.timestamp < unlkTime) {
-            return (2, shares, tkAmount, unlkTime); // Withdrawal locked (timelock active)
-        }
-        return (3, shares, tkAmount, unlkTime); // Withdrawal ready to process
+        if (block.timestamp < unlkTime) return (2, shares, tkAmount, unlkTime); // Timelock active
+
+        return (3, shares, tkAmount, unlkTime); // Ready to process
     }
 
-    function getBatchWithdraw() external view onlyExecutor returns (uint256) {
+    function getBatchWithdrawAmount() external view onlyExecutor returns (uint256) {
         return batchWithdrawStates[currentBatchId - 1].totalShares;
     }
 
