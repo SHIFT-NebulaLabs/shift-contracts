@@ -8,8 +8,10 @@ abstract contract ShiftManager is AccessModifier {
     bool public whitelistEnabled = true;
     bool public paused = true;
 
-    uint256 public performanceFeeBps;
-    uint256 public maintenanceFeeBpsPerSecond;
+    uint16 public performanceFeeBps; // 1% = 100 bps
+    uint16 public maintenanceFeeBpsAnnual; // 1% = 100 bps
+    uint256 public performanceFee18pt; // 1% = 0.01 * 10^18
+    uint256 public maintenanceFeePerSecond18pt; // 1% = 0.01 * 10^18
     uint256 public minDepositAmount;
     uint256 public maxTvl;
     address public feeCollector;
@@ -40,7 +42,7 @@ abstract contract ShiftManager is AccessModifier {
 
     function releasePause() external onlyAdmin {
         require(performanceFeeBps > 0, "ShiftManager: performance fee not set");
-        require(maintenanceFeeBpsPerSecond > 0, "ShiftManager: maintenance fee not set");
+        require(maintenanceFeeBpsAnnual > 0, "ShiftManager: maintenance fee not set");
         paused = false;
     }
 
@@ -59,12 +61,14 @@ abstract contract ShiftManager is AccessModifier {
 
     function updatePerformanceFee(uint16 _feeBps) external onlyAdmin {
         require(_feeBps > 0, "ShiftManager: zero performance fee");
-        performanceFeeBps = _calcFeeFromBps(_feeBps);
+        performanceFeeBps = _feeBps;
+        performanceFee18pt = _calc18ptFromBps(_feeBps);
     }
 
     function updateMaintenanceFee(uint16 _annualFeeBps) external onlyAdmin {
         require(_annualFeeBps > 0, "ShiftManager: zero maintenance fee");
-        maintenanceFeeBpsPerSecond = _calcFeeFromBps(_annualFeeBps) / SECONDS_IN_YEAR;
+        maintenanceFeeBpsAnnual = _annualFeeBps;
+        maintenanceFeePerSecond18pt = _calc18ptFromBps(_annualFeeBps) / SECONDS_IN_YEAR;
     }
 
     function updateMinDeposit(uint256 _amount) external onlyAdmin {
@@ -77,7 +81,7 @@ abstract contract ShiftManager is AccessModifier {
         maxTvl = _amount;
     }
 
-    function _calcFeeFromBps(uint16 _feeBps) internal pure returns (uint256) {
+    function _calc18ptFromBps(uint16 _feeBps) internal pure returns (uint256) {
         return (uint256(_feeBps) * 1e18) / 10_000;
     }
 }

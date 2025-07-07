@@ -63,6 +63,7 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
         tvlFeed = IShiftTvlFeed(_tvlFeedContract);
 
         currentBatchId = 1;
+        lastMaintenanceFeeClaimedAt = block.timestamp;
     }
 
 
@@ -259,7 +260,7 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
 
 
     // Private
-    function _calcSharesFromToken(uint256 _tokenAmount) private view returns (uint256) {
+    function _calcSharesFromToken(uint256 _tokenAmount) internal view returns (uint256) {
         (uint256 baseToken18Decimals, ) = _normalize(_tokenAmount, baseToken.decimals());
         (uint256 tvl18Decimals, ) = _normalize(tvlFeed.getLastTvl().value, tvlFeed.decimals());
 
@@ -269,7 +270,7 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
     }
 
     //rate with 6 decimals
-    function _calcTokenFromShares(uint256 _shareAmount, uint256 _rate) private view returns (uint256) {
+    function _calcTokenFromShares(uint256 _shareAmount, uint256 _rate) internal view returns (uint256) {
         (, uint8 baseTokenDecimalsTo18) = _normalize(_shareAmount, baseToken.decimals());
         (uint256 rate18Decimals, ) = _normalize(_rate, tvlFeed.decimals());
 
@@ -278,26 +279,26 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
         return baseTokenDecimalsTo18 == 0 ? tokenAmount.unwrap() : tokenAmount.unwrap() / 10**baseTokenDecimalsTo18; // Convert UD60x18 to uint256 (Token decimals)
     }
 
-    function _normalize(uint256 _amount, uint8 _decimals) private view returns (uint256 amount, uint8 decimalsTo18) {
+    function _normalize(uint256 _amount, uint8 _decimals) internal view returns (uint256 amount, uint8 decimalsTo18) {
         amount = _decimals == decimals() ? _amount : _amount * 10**(decimals() - _decimals);
         decimalsTo18 = _decimals < decimals() ? decimals() - _decimals : 0;
     }
 
-    function _calcPerformanceFee(uint256 _tokenAmount) private view returns (uint256 feeAmount, uint256 userAmount) {
-        UD60x18 fee = ud(_tokenAmount).mul(ud(performanceFeeBps)); // 1% fee
+    function _calcPerformanceFee(uint256 _tokenAmount) internal view returns (uint256 feeAmount, uint256 userAmount) {
+        UD60x18 fee = ud(_tokenAmount).mul(ud(performanceFee18pt)); // 1% fee
         feeAmount = fee.unwrap(); // Convert UD60x18 to uint256 (18 decimals)
         userAmount = ud(_tokenAmount).sub(fee).unwrap();
     }
 
-    function _calcMaintenanceFee(uint256 _lastClaimTimestamp) private view returns (uint256) {
+    function _calcMaintenanceFee(uint256 _lastClaimTimestamp) internal view returns (uint256) {
         (uint256 tvl18Decimals, ) = _normalize(tvlFeed.getLastTvl().value, tvlFeed.decimals());
         uint256 elapsed = block.timestamp - _lastClaimTimestamp;
 
-        UD60x18 feePerSecond = ud(tvl18Decimals).mul(ud(maintenanceFeeBpsPerSecond));
+        UD60x18 feePerSecond = ud(tvl18Decimals).mul(ud(maintenanceFeePerSecond18pt));
         return feePerSecond.mul(ud(elapsed)).unwrap();
     }
 
-    function _isExpired() public view returns(bool) {
+    function _isExpired() internal view returns(bool) {
         return depositStates[msg.sender].expirationTime < block.timestamp;
     }
 }
