@@ -16,7 +16,7 @@ abstract contract ShiftManager is AccessModifier {
     uint256 public maxTvl;
     address public feeCollector;
 
-    mapping(address => bool) public isWhitelisted;
+    mapping(address => bool) internal isWhitelisted;
 
     modifier notPaused() {
         require(!paused, "ShiftManager: paused");

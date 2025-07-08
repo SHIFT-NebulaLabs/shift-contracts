@@ -279,9 +279,9 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
         return baseTokenDecimalsTo18 == 0 ? tokenAmount.unwrap() : tokenAmount.unwrap() / 10**baseTokenDecimalsTo18; // Convert UD60x18 to uint256 (Token decimals)
     }
 
-    function _normalize(uint256 _amount, uint8 _decimals) internal view returns (uint256 amount, uint8 decimalsTo18) {
+    function _normalize(uint256 _amount, uint8 _decimals) internal view returns (uint256 amount, uint8 scaleFactor) {
         amount = _decimals == decimals() ? _amount : _amount * 10**(decimals() - _decimals);
-        decimalsTo18 = _decimals < decimals() ? decimals() - _decimals : 0;
+        scaleFactor = _decimals < decimals() ? decimals() - _decimals : 0;
     }
 
     function _calcPerformanceFee(uint256 _tokenAmount) internal view returns (uint256 feeAmount, uint256 userAmount) {
@@ -293,9 +293,7 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
     function _calcMaintenanceFee(uint256 _lastClaimTimestamp) internal view returns (uint256) {
         (uint256 tvl18Decimals, ) = _normalize(tvlFeed.getLastTvl().value, tvlFeed.decimals());
         uint256 elapsed = block.timestamp - _lastClaimTimestamp;
-
-        UD60x18 feePerSecond = ud(tvl18Decimals).mul(ud(maintenanceFeePerSecond18pt));
-        return feePerSecond.mul(ud(elapsed)).unwrap();
+        return (tvl18Decimals * maintenanceFeePerSecond18pt * elapsed) / 1e18;
     }
 
     function _isExpired() internal view returns(bool) {

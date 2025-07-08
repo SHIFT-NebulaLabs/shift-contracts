@@ -12,7 +12,7 @@ contract ShiftTvlFeed is AccessModifier {
         uint256 timestamp;
     }
 
-    TvlData[] private tvlHistory_;
+    TvlData[] internal tvlHistory;
     bool public init;
 
     event TvlUpdated(uint256 newValue, uint256 timestamp);
@@ -34,14 +34,14 @@ contract ShiftTvlFeed is AccessModifier {
     }
 
     function updateTvl(uint256 _value) external onlyOracle initialized {
-        tvlHistory_.push(TvlData({ value: _value, timestamp: block.timestamp }));
+        tvlHistory.push(TvlData({ value: _value, timestamp: block.timestamp }));
         emit TvlUpdated(_value, block.timestamp);
     }
 
     function updateTvlForDeposit(address _user, uint256 _value) external onlyOracle initialized {
         require(_user != address(0), "ShiftTvlFeed: zero user address");
         require(_value > 0, "ShiftTvlFeed: TVL must be positive");
-        tvlHistory_.push(TvlData({ value: _value, timestamp: block.timestamp }));
+        tvlHistory.push(TvlData({ value: _value, timestamp: block.timestamp }));
         shiftVault.allowDeposit(_user);
         emit TvlUpdated(_value, block.timestamp);
     }
@@ -51,18 +51,18 @@ contract ShiftTvlFeed is AccessModifier {
     }
 
     function getLastTvl() external view returns (TvlData memory) {
-        uint256 len = tvlHistory_.length;
+        uint256 len = tvlHistory.length;
         if (len == 0) return TvlData({ value: 0, timestamp: 0 });
-        return tvlHistory_[len - 1];
+        return tvlHistory[len - 1];
     }
 
     function getLastTvlEntries(uint256 _count) external view returns (TvlData[] memory) {
-        uint256 len = tvlHistory_.length;
+        uint256 len = tvlHistory.length;
         require(_count > 0, "ShiftTvlFeed: count must be positive");
         if (_count > len) _count = len;
         TvlData[] memory result = new TvlData[](_count);
         for (uint256 i = 0; i < _count; i++) {
-            result[i] = tvlHistory_[len - 1 - i];
+            result[i] = tvlHistory[len - 1 - i];
         }
         return result;
     }
