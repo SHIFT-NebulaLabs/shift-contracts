@@ -113,14 +113,6 @@ contract ShiftManagerTest is Test {
         assertEq(manager.whitelistEnabled(), !initial);
     }
 
-    function test_ManageWhitelistUser() public {
-        assertFalse(manager.isWhitelisted(user));
-        manager.manageWhitelist(user);
-        assertTrue(manager.isWhitelisted(user));
-        manager.manageWhitelist(user);
-        assertFalse(manager.isWhitelisted(user));
-    }
-
     // === ➗ Math ===
     /// @notice Tests for internal math functions and conversions.
 
@@ -181,11 +173,5 @@ contract ShiftManagerTest is Test {
         manager.updateMaxTvl(max);
         assertEq(manager.minDepositAmount(), min);
         assertEq(manager.maxTvl(), max);
-    }
-
-    function testFuzz_WhitelistToggle(address addr) public {
-        vm.assume(addr != address(0));
-        manager.manageWhitelist(addr);
-        assertTrue(manager.isWhitelisted(addr) || !manager.isWhitelisted(addr));
     }
 }

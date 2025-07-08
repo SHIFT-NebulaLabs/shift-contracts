@@ -9,7 +9,7 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 // === 🟢 Mock base token ===
 // Mock ERC20 token used as the base asset for testing
-contract MockBaseToken is ERC20 {
+contract ERC20Mock is ERC20 {
     constructor() ERC20("MockToken", "MTK") {
         _mint(msg.sender, 1_000_000 ether);
     }
@@ -20,7 +20,7 @@ contract ShiftTvlFeedTest is Test {
     ShiftVault vault;
     ShiftTvlFeed tvlFeed;
     ShiftAccessControl access;
-    MockBaseToken baseToken;
+    ERC20Mock baseToken;
 
     address admin = address(this);
     address oracle = address(0x1);
@@ -37,7 +37,7 @@ contract ShiftTvlFeedTest is Test {
         access.grantRole(access.ORACLE_ROLE(), oracle);
 
         // Deploy mock base token and contracts under test
-        baseToken = new MockBaseToken();
+        baseToken = new ERC20Mock();
         tvlFeed = new ShiftTvlFeed(address(access));
         vault = new ShiftVault(
             address(access),
