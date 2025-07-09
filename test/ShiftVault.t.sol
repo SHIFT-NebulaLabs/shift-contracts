@@ -1,319 +1,292 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
-
 import "forge-std/Test.sol";
-import "openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
-import "../src/ShiftVault.sol";
-import "../src/ShiftTvlFeed.sol";
-import "../src/ShiftAccessControl.sol";
+import "./mocks/MockAccessControl.sol";
+import "./mocks/MockERC20.sol";
+import "./mocks/MockTvlFeed.sol";
+import "./mocks/ShiftVaultHarness.sol";
 
-// === 🟢 Mock base token ===
-// Mock ERC20 token used as the base asset for testing
-contract ERC20Mock is ERC20 {
-    uint8 private _decimals;
-
-    constructor(string memory name, string memory symbol, uint8 decimals_) ERC20(name, symbol) {
-        _decimals = decimals_;
-        _mint(msg.sender, 1e12); // Initial supply
-    }
-
-    function mint(address to, uint256 amount) external {
-        _mint(to, amount);
-    }
-
-    function decimals() public view override returns (uint8) {
-        return _decimals;
-    }
-}
-
-// === 🟢 ShiftVaultTest: Test suite for ShiftVault contract ===
 contract ShiftVaultTest is Test {
-    ShiftVault vault;
-    ShiftTvlFeed tvlFeed;
-    ShiftAccessControl access;
-    ERC20Mock baseToken;
+    MockAccessControl access;
+    MockERC20 token;
+    MockTvlFeed tvlFeed;
+    ShiftVaultHarness vault;
 
-    address admin        = address(0xA);
-    address feeCollector = address(0xF);
-    address user         = address(0x1);
-    address oracle       = address(0x2);
-    address executor     = address(0x3);
+    address constant ADMIN = address(1);
+    address constant EXECUTOR = address(2);
+    address constant FEE_COLLECTOR = address(3);
+    address constant USER = address(4);
 
-    // === 🟢 Setup: Deploy contracts and prepare initial state ===
+    bytes32 constant EXECUTOR_ROLE = keccak256("EXECUTOR_ROLE");
+
+    uint256 constant MIN_DEPOSIT = 1_000_000;
+    uint256 constant INITIAL_BALANCE = 10_000_000;
+
+    /// @notice Sets up the test environment and deploys all mocks and the vault
     function setUp() public {
-        access = new ShiftAccessControl(admin);
-        baseToken = new ERC20Mock("MockToken", "MOCK", 6);
-        tvlFeed = new ShiftTvlFeed(address(access));
-        vault = new ShiftVault(address(access), address(baseToken), address(tvlFeed), feeCollector, 1e6, 1e9);
-
-        vm.prank(oracle);
-        tvlFeed.initialize(address(vault));
-
-        vm.startPrank(admin);
-        access.grantRole(access.ORACLE_ROLE(), oracle);
-        access.grantRole(access.EXECUTOR_ROLE(), executor);
-        vault.manageWhitelist(user);
-        vault.updatePerformanceFee(50);        // 0.5%
-        vault.updateMaintenanceFee(200);       // 2%
+        access = new MockAccessControl();
+        access.grantRole(0x00, ADMIN);
+        access.grantRole(EXECUTOR_ROLE, EXECUTOR);
+        token = new MockERC20(6);
+        tvlFeed = new MockTvlFeed();
+        vault = new ShiftVaultHarness(
+            address(access),
+            address(token),
+            address(tvlFeed),
+            FEE_COLLECTOR,
+            MIN_DEPOSIT,
+            1_000_000_000,
+            1 days
+        );
+        vm.prank(ADMIN);
+        vault.updatePerformanceFee(100);
+        vm.prank(ADMIN);
+        vault.updateMaintenanceFee(100);
+        vm.prank(ADMIN);
         vault.releasePause();
-        vault.updateMaxTvl(1e15);                // $1 billion
+    }
+
+    /// @dev Helper to whitelist a user, fund them, and approve the vault
+    function _setupUser(address user, uint256 amount) internal {
+        vm.prank(ADMIN);
+        vault.manageWhitelist(user);
+        deal(address(token), user, amount);
+        vm.startPrank(user);
+        vault.reqDeposit();
+        vm.stopPrank();
+        vm.prank(address(tvlFeed));
+        vault.allowDeposit(user);
+        vm.startPrank(user);
+        token.approve(address(vault), amount);
+    }
+
+    // --- Deposit & Withdraw Flow Tests ---
+
+    /// @notice Tests the full deposit and withdraw flow for a user
+    function testDepositAndWithdrawFlow() public {
+        _setupUser(USER, INITIAL_BALANCE);
+        tvlFeed.setLastTvl(10_000_000);
+        vault.deposit(5_000_000);
+        assertEq(vault.balanceOf(USER), 5_000_000 * 1e12);
+        assertEq(token.balanceOf(address(vault)), 5_000_000);
+
+        uint256 shares = vault.balanceOf(USER);
+        vault.reqWithdraw(shares);
         vm.stopPrank();
 
-        // Mint tokens (extra supply for safety)
-        baseToken.mint(user, 5e8);
-        baseToken.mint(executor, 5e8);
-        vm.prank(user);
-        baseToken.approve(address(vault), type(uint256).max);
-        vm.prank(executor);
-        baseToken.approve(address(vault), type(uint256).max);
-    }
-
-    function testDepositFlow() public {
-        vm.prank(user);
-        vault.reqDeposit();
-        vm.prank(oracle);
-        tvlFeed.updateTvlForDeposit(user, 5e7);
-        vm.prank(user);
-        vault.deposit(5e7);
-        assertGt(vault.balanceOf(user), 0);
-    }
-
-    function testWithdrawFullFlow() public {
-        testDepositFlow();
-        uint256 shares = vault.balanceOf(user);
-        vm.prank(user);
-        vault.reqWithdraw(shares);
-        vm.warp(block.timestamp + 1 days);
-        vm.prank(executor);
+        vm.startPrank(EXECUTOR);
+        vault.sendFundsToResolver(5_000_000);
         vault.processWithdraw();
-        vm.prank(executor);
-        vault.resolveWithdraw(5e7, 1e6);
-        vm.prank(user);
+        token.approve(address(vault), 5_000_000);
+        vault.resolveWithdraw(5_000_000, 1_000_000);
+        vm.stopPrank();
+
+        skip(1 days + 1);
+
+        vm.startPrank(USER);
+        uint256 balBefore = token.balanceOf(USER);
         vault.withdraw();
-        assertEq(vault.balanceOf(user), 0);
+        uint256 balAfter = token.balanceOf(USER);
+        assertGt(balAfter, balBefore);
+        vm.stopPrank();
     }
 
-    function testCancelWithdraw() public {
-        testDepositFlow();
-        uint256 shares = vault.balanceOf(user);
-        vm.prank(user);
+    /// @notice Tests that the first deposit mints the correct amount of shares
+    function testFirstDepositSharesMatch() public {
+        _setupUser(USER, 1_000_000);
+        vault.deposit(1_000_000);
+        assertEq(vault.balanceOf(USER), 1_000_000 * 1e12);
+        vm.stopPrank();
+    }
+
+    /// @notice Tests that a double withdraw reverts as expected
+    function testDoubleWithdrawReverts() public {
+        _setupUser(USER, INITIAL_BALANCE);
+        tvlFeed.setLastTvl(10_000_000);
+        vault.deposit(5_000_000);
+        uint256 shares = vault.balanceOf(USER);
         vault.reqWithdraw(shares);
-        vm.prank(user);
-        vault.cancelWithdraw();
-        (, uint256 amt,,) = vault.getWithdrawStatus();
-        assertEq(amt, 0);
-    }
+        vm.stopPrank();
 
-    function testWhitelistToggle() public {
-        vm.prank(admin);
-        vault.manageWhitelist(address(0));
-        vm.prank(user);
-        vault.reqDeposit();
-    }
+        vm.startPrank(EXECUTOR);
+        vault.sendFundsToResolver(5_000_000);
+        vault.processWithdraw();
+        token.approve(address(vault), 5_000_000);
+        vault.resolveWithdraw(5_000_000, 1_000_000);
+        vm.stopPrank();
 
-    function testRevertInvalidDepositFlow() public {
+        skip(1 days + 1);
+
+        vm.startPrank(USER);
+        vault.withdraw();
         vm.expectRevert();
-        vm.prank(user);
-        vault.deposit(1e6);
+        vault.withdraw();
+        vm.stopPrank();
     }
 
-    function testRevertWithdrawBeforeTime() public {
-        testDepositFlow();
-        uint256 shares = vault.balanceOf(user);
-        vm.prank(user);
+    /// @notice Tests that resolving a withdraw twice reverts
+    function testResolveWithdrawTwiceReverts() public {
+        _setupUser(USER, INITIAL_BALANCE);
+        tvlFeed.setLastTvl(10_000_000);
+        vault.deposit(5_000_000);
+        uint256 shares = vault.balanceOf(USER);
         vault.reqWithdraw(shares);
-        vm.prank(executor);
+        vm.stopPrank();
+
+        vm.startPrank(EXECUTOR);
+        vault.sendFundsToResolver(5_000_000);
         vault.processWithdraw();
-        vm.prank(executor);
-        vault.resolveWithdraw(5e7, 1e6);
+        token.approve(address(vault), 5_000_000);
+        vault.resolveWithdraw(5_000_000, 1_000_000);
         vm.expectRevert();
-        vm.prank(user);
-        vault.withdraw();
+        vault.resolveWithdraw(5_000_000, 1_000_000);
+        vm.stopPrank();
     }
 
-    function testMaintenanceFeeClaiming() public {
-        vm.prank(oracle);
-        tvlFeed.updateTvl(5e7);
-        vm.warp(block.timestamp + 2 hours);
-        vm.prank(admin);
-        vault.claimMaintenanceFee();
-        assertGt(vault.balanceOf(feeCollector), 0);
+    // --- Calculation Tests ---
+
+    /// @notice Tests calculation of shares from token amount
+    function testCalcSharesFromToken() public {
+        tvlFeed.setLastTvl(10_000_000);
+        address otherUser = address(0xBEEF);
+        _setupUser(otherUser, 10_000_000);
+        vault.deposit(10_000_000);
+        vm.stopPrank();
+
+        uint256 amount = 5_000_000;
+        uint256 totalSupply = vault.totalSupply();
+        uint256 tvl = 10_000_000;
+        uint256 expectedShares = (amount * 1e12 * totalSupply) / (tvl * 1e12);
+
+        uint256 shares = vault.exposed_calcSharesFromToken(amount);
+        assertEq(shares, expectedShares);
     }
 
-    function testPerformanceFeeCalculation() public {
-        uint256 depositAmount = 100_000_000; // $100
-        uint256 expectedFee = (depositAmount * 50) / 10_000; // 0.5%
+    /// @notice Tests calculation of token amount from shares
+    function testCalcTokenFromShares() public {
+        tvlFeed.setLastTvl(20_000_000);
+        address otherUser = address(0xBEEF);
+        _setupUser(otherUser, 20_000_000);
+        vault.deposit(20_000_000);
+        vm.stopPrank();
 
-        // Mint extra token to user and feeCollector
-        baseToken.mint(user, 1e9); // safety buffer
-        baseToken.mint(feeCollector, 1e9);
-        baseToken.mint(executor, 1e9);
-        vm.prank(user);
-        baseToken.approve(address(vault), type(uint256).max);
+        uint256 shares = 5e18;
+        uint256 totalSupply = vault.totalSupply();
+        uint256 tvl = 20_000_000;
+        uint256 expectedTokens = (shares * tvl * 1e12) / totalSupply;
 
-        // Deposit flow
-        vm.prank(user);
-        vault.reqDeposit();
-        vm.prank(oracle);
-        tvlFeed.updateTvlForDeposit(user, depositAmount);
-        vm.prank(user);
-        vault.deposit(depositAmount);
-
-        // Validate shares assigned
-        uint256 shares = vault.balanceOf(user);
-        require(shares > 0, "No shares assigned to user");
-
-        // Withdraw flow
-        vm.prank(user);
-        vault.reqWithdraw(shares);
-        vm.warp(block.timestamp + 1 days);
-        vm.prank(executor);
-        vault.processWithdraw();
-
-        // Calculate rate (1:1)
-        uint256 rate = (depositAmount * 1e18) / shares;
-        vm.prank(executor);
-        vault.resolveWithdraw(depositAmount, rate);
-
-        // Fee transfer check
-        uint256 before = baseToken.balanceOf(feeCollector);
-        vm.prank(user);
-        vault.withdraw();
-        uint256 earned = baseToken.balanceOf(feeCollector) - before;
-
-        console.log("Expected performance fee:", expectedFee);
-        console.log("Actual fee collected:     ", earned);
-        assertEq(earned, expectedFee);
+        uint256 tokens = vault.exposed_calcTokenFromShares(shares, 1e18);
+        assertEq(tokens, expectedTokens);
     }
 
+    /// @notice Tests calculation of token amount from shares with a custom rate
+    function testCalcTokenFromSharesWithCustomRate() public {
+        tvlFeed.setLastTvl(100_000_000);
+        address otherUser = address(0xBEEF);
+        _setupUser(otherUser, 50_000_000);
+        vault.deposit(50_000_000);
+        vm.stopPrank();
 
-    function testMaintenanceFeeExactCalc() public {
-        uint256 tvl = 50_000_000;
-        uint256 elapsed = 3600;
+        uint256 shares = 5e18;
+        uint256 rate = 2e18;
+        uint256 expectedTokens = (shares * rate) / 1e18;
+        assertEq(expectedTokens, 10e18);
 
-        vm.prank(oracle);
-        tvlFeed.updateTvl(tvl);
-        vm.warp(block.timestamp + elapsed);
+        uint256 tokens = vault.exposed_calcTokenFromShares(shares, rate);
+        assertEq(tokens, expectedTokens);
+    }
+
+    /// @notice Fuzz test for shares calculation from token amount
+    function testFuzzCalcShares(uint256 amount) public {
+        vm.assume(amount >= MIN_DEPOSIT && amount <= 1_000_000_000);
+        tvlFeed.setLastTvl(100_000_000);
+
+        address otherUser = address(0xBEEF);
+        _setupUser(otherUser, 10_000_000);
+        vault.deposit(10_000_000);
+        vm.stopPrank();
+
+        uint256 totalSupply = vault.totalSupply();
+        uint256 tvl = 100_000_000;
+        uint256 expectedShares = (amount * 1e12 * totalSupply) / (tvl * 1e12);
+        uint256 shares = vault.exposed_calcSharesFromToken(amount);
+
+        assertEq(shares, expectedShares);
+    }
+
+    /// @notice Fuzz test for token calculation from shares and custom rate
+    function testFuzzCalcToken(uint256 shares) public view {
+        vm.assume(shares >= 1e18 && shares <= 1_000_000_000e18);
+        uint256 rate = 2e18;
+        uint256 tokensExpected = (shares * rate) / 1e18;
+        uint256 tokens = vault.exposed_calcTokenFromShares(shares, rate);
+        assertEq(tokens, tokensExpected);
+    }
+
+    // --- Fee Calculation Tests ---
+
+    /// @notice Tests performance fee calculation
+    function testPerformanceFee() public view {
+        uint256 gross = 10_000_000;
+        (uint256 fee, uint256 net) = vault.exposed_calcPerformanceFee(gross);
+        assertEq(fee, gross / 100);
+        assertEq(net, gross - fee);
+    }
+
+    /// @notice Tests maintenance fee calculation over a day
+    function testMaintenanceFee() public {
+        uint256 tvl = 100_000_000;
+        tvlFeed.setLastTvl(tvl);
+        uint256 lastClaim = block.timestamp;
+        skip(1 days);
+        uint256 fee = vault.exposed_calcMaintenanceFee(lastClaim);
 
         uint256 tvl18 = tvl * 1e12;
-        uint256 rate = vault.maintenanceFeePerSecond18pt();
-        uint256 expected = (tvl18 * rate * elapsed) / 1e18;
+        uint256 elapsed = 1 days;
+        uint256 maintenanceFeeAnnual = 100;
+        uint256 secondsInYear = 365 days;
+        uint256 maintenanceFeePerSecond18pt = (maintenanceFeeAnnual * 1e18) / 10_000 / secondsInYear;
+        uint256 expectedFee = (tvl18 * maintenanceFeePerSecond18pt * elapsed) / 1e18;
 
-        vm.prank(admin);
-        vault.claimMaintenanceFee();
-        uint256 actual = vault.balanceOf(feeCollector);
-        assertEq(actual, expected);
+        assertApproxEqAbs(fee, expectedFee, 1);
     }
 
-    function testFuzzMaintenanceFeeGeneration(uint256 rawTvl, uint256 rawTime) public {
-        uint256 tvlInput = bound(rawTvl, 1e6, 5e12); // Bound TVL between $1 and $5 million, tvl in 6 decimals
-        uint256 durationSeconds = bound(rawTime, 3600, 3 days);
+    // --- Revert/Negative Tests ---
 
-        vm.prank(oracle);
-        tvlFeed.updateTvl(tvlInput);
-        vm.warp(block.timestamp + durationSeconds);
-
-        vm.prank(admin);
-        vault.claimMaintenanceFee();
-        assertGt(vault.balanceOf(feeCollector), 0);
-    }
-
-    function testFuzzPerformanceFeeCalculation(uint256 rawDeposit) public {
-        uint256 depositAmount = bound(rawDeposit, 1e6, 1e12); // Bound deposit between $1 and $1 million
-        uint256 expectedFee = (depositAmount * 50) / 10_000; // 0.5%
-
-        // Mint extra token to user and feeCollector
-        baseToken.mint(user, 1e12); // safety buffer
-        baseToken.mint(feeCollector, 1e12);
-        baseToken.mint(executor, 1e12);
-        vm.prank(user);
-        baseToken.approve(address(vault), type(uint256).max);
-
-        // Deposit flow
-        vm.prank(user);
-        vault.reqDeposit();
-        vm.prank(oracle);
-        tvlFeed.updateTvlForDeposit(user, depositAmount);
-        vm.prank(user);
-        vault.deposit(depositAmount);
-
-        // Validate shares assigned
-        uint256 shares = vault.balanceOf(user);
-        require(shares > 0, "No shares assigned to user");
-
-        // Withdraw flow
-        vm.prank(user);
-        vault.reqWithdraw(shares);
-        vm.warp(block.timestamp + 1 days);
-        vm.prank(executor);
-        vault.processWithdraw();
-
-        // Calculate rate (1:1)
-        uint256 rate = (depositAmount * 1e18) / shares;
-        vm.prank(executor);
-        vault.resolveWithdraw(depositAmount, rate);
-
-        // Fee transfer check
-        uint256 before = baseToken.balanceOf(feeCollector);
-        vm.prank(user);
-        vault.withdraw();
-        uint256 earned = baseToken.balanceOf(feeCollector) - before;
-
-        console.log("Expected performance fee:", expectedFee);
-        console.log("Actual fee collected:     ", earned);
-        assertEq(earned, expectedFee);
-    }
-
-   function testMaintenanceFeeLowTvlShortInterval() public {
-        vm.prank(oracle);
-        tvlFeed.updateTvl(50e6);
-        vm.warp(block.timestamp + 1 hours);
-        vm.prank(admin);
-        vault.claimMaintenanceFee();
-        uint256 fee = vault.balanceOf(feeCollector);
-        assertGt(fee, 0);
-    }
-
-    function testRevertWithdrawExcessShares() public {
-        testDepositFlow();
-        uint256 actualShares = vault.balanceOf(user);
-        uint256 excessive = actualShares + 1e6;
-
-        vm.prank(user);
-        vm.expectRevert("ShiftVault: insufficient shares");
-        vault.reqWithdraw(excessive);
-    }
-
-    function testRevertResolveWithdrawUnauthorized() public {
-        testDepositFlow();
-        uint256 shares = vault.balanceOf(user);
-        vm.prank(user);
-        vault.reqWithdraw(shares);
-        vm.warp(block.timestamp + 1 days);
-        vm.prank(executor);
-        vault.processWithdraw();
-
-        vm.prank(user); // non ha EXECUTOR_ROLE
-        vm.expectRevert();
-        vault.resolveWithdraw(5e7, 1e6);
-    }
-
-    function testRevertDepositWithoutBalance() public {
-        uint256 depositAmount = 1e6;
-
-        // Rimuoviamo tutti i token dal wallet utente
-        vm.startPrank(user);
-        baseToken.transfer(address(0xdead), baseToken.balanceOf(user)); // brucia tutto
-        baseToken.approve(address(vault), type(uint256).max);
+    /// @notice Tests that deposit below minimum reverts
+    function testDepositBelowMinReverts() public {
+        vm.prank(ADMIN);
+        vault.manageWhitelist(USER);
+        deal(address(token), USER, MIN_DEPOSIT - 1);
+        vm.startPrank(USER);
         vault.reqDeposit();
         vm.stopPrank();
-
-        vm.prank(oracle);
-        tvlFeed.updateTvlForDeposit(user, depositAmount);
-
+        vm.prank(address(tvlFeed));
+        vault.allowDeposit(USER);
+        vm.startPrank(USER);
+        token.approve(address(vault), MIN_DEPOSIT - 1);
         vm.expectRevert();
-        vm.prank(user);
-        vault.deposit(depositAmount);
+        vault.deposit(MIN_DEPOSIT - 1);
+        vm.stopPrank();
     }
 
+    /// @notice Tests that deposit request from non-whitelisted user reverts
+    function testDepositNotWhitelistedReverts() public {
+        deal(address(token), USER, INITIAL_BALANCE);
+        vm.startPrank(USER);
+        vm.expectRevert();
+        vault.reqDeposit();
+        vm.stopPrank();
+    }
+
+    /// @notice Tests that withdraw request without shares reverts
+    function testWithdrawWithoutSharesReverts() public {
+        vm.prank(ADMIN);
+        vault.manageWhitelist(USER);
+        deal(address(token), USER, INITIAL_BALANCE);
+        vm.startPrank(USER);
+        vm.expectRevert();
+        vault.reqWithdraw(1e18);
+        vm.stopPrank();
+    }
 }

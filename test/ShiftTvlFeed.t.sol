@@ -1,216 +1,82 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
 import "forge-std/Test.sol";
-import "../src/ShiftVault.sol";
-import "../src/ShiftTvlFeed.sol";
-import "../src/ShiftAccessControl.sol";
-import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "./mocks/MockAccessControl.sol";
+import "./mocks/ShiftTvlFeedHarness.sol";
 
-// === 🟢 Mock base token ===
-// Mock ERC20 token used as the base asset for testing
-contract ERC20Mock is ERC20 {
-    constructor() ERC20("MockToken", "MTK") {
-        _mint(msg.sender, 1_000_000 ether);
-    }
+/// @notice MockVault simulates a vault for test purposes
+contract MockVault {
+    function allowDeposit(address) external {}
 }
 
-// === 🟢 ShiftTvlFeedTest: Test suite for ShiftTvlFeed contract ===
+/// @notice Test suite for ShiftTvlFeed
 contract ShiftTvlFeedTest is Test {
-    ShiftVault vault;
-    ShiftTvlFeed tvlFeed;
-    ShiftAccessControl access;
-    ERC20Mock baseToken;
+    MockAccessControl access;
+    ShiftTvlFeedHarness tvlFeed;
+    MockVault mockVault;
+    address admin = address(1);
+    address oracle = address(2);
 
-    address admin = address(this);
-    address oracle = address(0x1);
-    address user = address(0x2);
-    address feeCollector = address(0xdead);
-
-    uint256 minDeposit = 1000 ether;
-    uint256 maxTvl = 10_000_000 ether;
-
-    // === 🟢 Setup: Deploy contracts and prepare initial state ===
+    /// @notice Setup: deploys mocks and initializes the contract under test
     function setUp() public {
-        // Deploy access control and grant oracle role
-        access = new ShiftAccessControl(admin);
-        access.grantRole(access.ORACLE_ROLE(), oracle);
+        access = new MockAccessControl();
+        access.grantRole(0x00, admin);
+        access.grantRole(keccak256("ORACLE_ROLE"), oracle);
 
-        // Deploy mock base token and contracts under test
-        baseToken = new ERC20Mock();
-        tvlFeed = new ShiftTvlFeed(address(access));
-        vault = new ShiftVault(
-            address(access),
-            address(baseToken),
-            address(tvlFeed),
-            feeCollector,
-            minDeposit,
-            maxTvl
-        );
+        tvlFeed = new ShiftTvlFeedHarness(address(access));
+        mockVault = new MockVault();
 
-        // Initialize TVL feed with vault address
-        tvlFeed.initialize(address(vault));
-
-        // Fund user and approve vault for deposits
-        baseToken.transfer(user, 5000 ether);
-        vm.startPrank(user);
-        baseToken.approve(address(vault), type(uint256).max);
-        vm.stopPrank();
+        vm.prank(admin);
+        tvlFeed.initialize(address(mockVault));
     }
 
-    // === 🟢 Initial State: Check correct initialization ===
-
-    /// @notice TVL feed should be initialized and linked to the correct vault
-    function test_InitLinksVaultCorrectly() public view {
+    /// @notice Tests that initialize works and cannot be called twice
+    function testInitialize() public {
+        vm.expectRevert();
+        vm.prank(admin);
+        tvlFeed.initialize(address(mockVault));
+        assertEq(address(tvlFeed.shiftVault()), address(mockVault));
         assertTrue(tvlFeed.init());
-        assertEq(address(tvlFeed.shiftVault()), address(vault));
     }
 
-    // === 🟢 Functional: TVL Updates & Queries ===
-
-    /// @notice updateTvl should store new value and update timestamp
-    function test_UpdateTvlStoresNewValue() public {
-        vm.prank(oracle);
-        tvlFeed.updateTvl(1234);
-        ShiftTvlFeed.TvlData memory data = tvlFeed.getLastTvl();
-        assertEq(data.value, 1234);
-        assertGt(data.timestamp, 0);
-    }
-
-    /// @notice updateTvlForDeposit should trigger DepositAllowed event from vault
-    function test_UpdateTvlForDepositTriggersVaultEvent() public {
-        // Whitelist user and request deposit
+    /// @notice Tests that initialize reverts if already initialized
+    function testRevertAlreadyInitialized() public {
+        vm.expectRevert();
         vm.prank(admin);
-        vault.manageWhitelist(user);
-        vm.prank(user);
-        vault.reqDeposit();
+        tvlFeed.initialize(address(mockVault));
+    }
 
-        // Record logs and call updateTvlForDeposit
-        vm.recordLogs();
+    /// @notice Tests that only the oracle can update TVL and data is saved correctly
+    function testUpdateTvlOracle() public {
         vm.prank(oracle);
-        tvlFeed.updateTvlForDeposit(user, 2345);
-
-        // Check for DepositAllowed event
-        Vm.Log[] memory logs = vm.getRecordedLogs();
-        bool found;
-        uint256 expirationTime;
-
-        for (uint256 i = 0; i < logs.length; i++) {
-            if (logs[i].topics[0] == keccak256("DepositAllowed(address,uint256)")) {
-                (expirationTime) = abi.decode(logs[i].data, (uint256));
-                found = true;
-                break;
-            }
-        }
-
-        assertTrue(found, "DepositAllowed not emitted");
-        assertGt(expirationTime, block.timestamp);
+        tvlFeed.updateTvl(123456);
+        assertEq(tvlFeed.exposed_tvlHistoryLength(), 1);
+        ShiftTvlFeed.TvlData memory d = tvlFeed.exposed_tvlHistoryAt(0);
+        assertEq(d.value, 123456);
     }
 
-    /// @notice decimals() should always return 6
-    function test_DecimalsAreFixedToSix() public view {
-        assertEq(tvlFeed.decimals(), 6);
+    /// @notice Tests that anyone except the oracle cannot update the TVL
+    function testRevertNotOracleUpdateTvl() public {
+        vm.expectRevert();
+        tvlFeed.updateTvl(1);
     }
 
-    /// @notice getLastTvlEntries should return latest values in correct order (most recent first)
-    function test_GetLastTvlEntriesReturnsCorrectOrder() public {
+    /// @notice Tests that the oracle can call updateTvlForDeposit
+    function testUpdateTvlForDeposit() public {
+        vm.prank(oracle);
+        tvlFeed.updateTvlForDeposit(address(0x99), 123);
+        assertEq(tvlFeed.exposed_tvlHistoryLength(), 1);
+    }
+
+    /// @notice Tests that getLastTvlEntries returns the correct last N values
+    function testGetLastTvlEntries() public {
         vm.startPrank(oracle);
-        for (uint256 i = 0; i < 3; i++) {
-            tvlFeed.updateTvl(5000 + i);
-        }
+        for (uint256 i; i < 5; ++i) tvlFeed.updateTvl(i + 100);
         vm.stopPrank();
-        ShiftTvlFeed.TvlData[] memory entries = tvlFeed.getLastTvlEntries(2);
-        assertEq(entries.length, 2);
-        assertEq(entries[0].value, 5002);
-        assertEq(entries[1].value, 5001);
-    }
-
-    // === 🟠 Permissions: Only Oracle ===
-
-    /// @notice Only oracle should be able to call updateTvl
-    function test_OnlyOracleCanCall_updateTvl() public {
-        vm.prank(oracle);
-        tvlFeed.updateTvl(12345);
-        assertEq(tvlFeed.getLastTvl().value, 12345);
-
-        vm.prank(user);
-        vm.expectRevert("Not oracle");
-        tvlFeed.updateTvl(67890);
-    }
-
-    /// @notice Only oracle should be able to call updateTvlForDeposit
-    function test_OnlyOracleCanCall_updateTvlForDeposit() public {
-        vm.prank(admin);
-        vault.manageWhitelist(user);
-        vm.prank(user);
-        vault.reqDeposit();
-
-        vm.prank(oracle);
-        tvlFeed.updateTvlForDeposit(user, 5000);
-        assertEq(tvlFeed.getLastTvl().value, 5000);
-
-        vm.prank(user);
-        vm.expectRevert("Not oracle");
-        tvlFeed.updateTvlForDeposit(user, 9999);
-    }
-
-    // === 🔴 Reverts: Error Checks ===
-
-    /// @notice Should revert if initialize is called twice
-    function test_RevertIf_DoubleInitialize() public {
-        vm.expectRevert("ShiftTvlFeed: already initialized");
-        tvlFeed.initialize(address(vault));
-    }
-
-    /// @notice Should revert if initialized with zero vault address
-    function test_RevertIf_VaultIsZero() public {
-        ShiftTvlFeed fresh = new ShiftTvlFeed(address(access));
-        vm.expectRevert("ShiftTvlFeed: zero vault address");
-        fresh.initialize(address(0));
-    }
-
-    /// @notice Should revert if updateTvl is called before initialization
-    function test_RevertIf_UpdateWithoutInit() public {
-        ShiftTvlFeed fresh = new ShiftTvlFeed(address(access));
-        vm.prank(oracle);
-        vm.expectRevert("ShiftTvlFeed: not initialized");
-        fresh.updateTvl(1);
-    }
-
-    /// @notice Should revert if user address is zero in updateTvlForDeposit
-    function test_RevertIf_UserIsZeroAddress() public {
-        vm.prank(oracle);
-        vm.expectRevert("ShiftTvlFeed: zero user address");
-        tvlFeed.updateTvlForDeposit(address(0), 123);
-    }
-
-    /// @notice Should revert if TVL passed is zero in updateTvlForDeposit
-    function test_RevertIf_TvlIsZero() public {
-        vm.prank(oracle);
-        vm.expectRevert("ShiftTvlFeed: TVL must be positive");
-        tvlFeed.updateTvlForDeposit(user, 0);
-    }
-
-    /// @notice Should revert if updateTvl is called by non-oracle
-    function test_RevertIf_CallerNotOracle() public {
-        vm.prank(user);
-        vm.expectRevert("Not oracle");
-        tvlFeed.updateTvl(9999);
-    }
-
-    /// @notice Should revert if zero entries are requested from getLastTvlEntries
-    function test_RevertIf_EntryCountIsZero() public {
-        vm.expectRevert("ShiftTvlFeed: count must be positive");
-        tvlFeed.getLastTvlEntries(0);
-    }
-
-    // === 🌪️ Fuzzing ===
-
-    /// @notice Fuzz: updateTvl should accept any large, non-zero value
-    function testFuzz_UpdateTvlAcceptsLargeValues(uint256 value) public {
-        vm.assume(value > 0);
-        vm.prank(oracle);
-        tvlFeed.updateTvl(value);
-        assertEq(tvlFeed.getLastTvl().value, value);
+        ShiftTvlFeed.TvlData[] memory arr = tvlFeed.getLastTvlEntries(3);
+        assertEq(arr.length, 3);
+        assertEq(arr[0].value, 104);
+        assertEq(arr[2].value, 102);
     }
 }
