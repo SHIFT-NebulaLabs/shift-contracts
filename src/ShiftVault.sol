@@ -117,6 +117,9 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
         WithdrawState storage userState = userWithdrawStates[msg.sender];
         require(userState.sharesAmount == 0, "ShiftVault: withdraw already requested");
 
+        // Transfer shares to the vault
+        _transfer(msg.sender, address(this), _shareAmount);
+
         BatchState storage batchState = batchWithdrawStates[currentBatchId];
         batchState.totalShares += _shareAmount;
 
@@ -147,7 +150,8 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
         // Update batch state
         amountReadyForWithdraw -= shares;
 
-        _burn(msg.sender, shares);
+        // Burn shares from vault
+        _burn(address(this), shares);
 
         // Transfer tokens to user and feeCollector
         if (userAmount > 0) baseToken.safeTransfer(msg.sender, userAmount);
@@ -162,11 +166,18 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
     function cancelWithdraw() external nonReentrant {
         WithdrawState storage userState = userWithdrawStates[msg.sender];
         require(userState.sharesAmount > 0, "ShiftVault: no withdrawal request to cancel");
-        require(currentBatchId == userState.batchId, "ShiftVault: cannot cancel, withdrawal already processing");
-        require(batchWithdrawStates[userState.batchId].rate == 0, "ShiftVault: batch already resolved");
 
+        BatchState storage batchState = batchWithdrawStates[userState.batchId];
+
+        // Check if batch is still pending
+        if (currentBatchId != userState.batchId){
+            require(batchState.rate != 0, "ShiftVault: cannot cancel, withdrawal is processing");
+            amountReadyForWithdraw -= userState.sharesAmount;
+        }
         // Update batch state before resetting user state
-        batchWithdrawStates[userState.batchId].totalShares -= userState.sharesAmount;
+        batchState.totalShares -= userState.sharesAmount;
+        // Transfer shares back to user
+        _transfer(address(this), msg.sender, userState.sharesAmount);
 
         // Reset user state
         userState.sharesAmount = 0;
