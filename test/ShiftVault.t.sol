@@ -253,6 +253,12 @@ contract ShiftVaultTest is Test {
 
     // --- Revert/Negative Tests ---
 
+    function testUpdateMaxTvlReverts() public {
+        vm.prank(ADMIN);
+        vm.expectRevert("ShiftManager: zero max TVL");
+        vault.updateMaxTvl(0);
+    }
+
     /// @notice Tests that deposit below minimum reverts
     function testDepositBelowMinReverts() public {
         vm.prank(ADMIN);
@@ -265,7 +271,7 @@ contract ShiftVaultTest is Test {
         vault.allowDeposit(USER);
         vm.startPrank(USER);
         token.approve(address(vault), MIN_DEPOSIT - 1);
-        vm.expectRevert();
+        vm.expectRevert("ShiftVault: deposit below minimum");
         vault.deposit(MIN_DEPOSIT - 1);
         vm.stopPrank();
     }
@@ -274,7 +280,7 @@ contract ShiftVaultTest is Test {
     function testDepositNotWhitelistedReverts() public {
         deal(address(token), USER, INITIAL_BALANCE);
         vm.startPrank(USER);
-        vm.expectRevert();
+        vm.expectRevert("ShiftVault: not whitelisted");
         vault.reqDeposit();
         vm.stopPrank();
     }
@@ -285,7 +291,7 @@ contract ShiftVaultTest is Test {
         vault.manageWhitelist(USER);
         deal(address(token), USER, INITIAL_BALANCE);
         vm.startPrank(USER);
-        vm.expectRevert();
+        vm.expectRevert("ShiftVault: insufficient shares");
         vault.reqWithdraw(1e18);
         vm.stopPrank();
     }

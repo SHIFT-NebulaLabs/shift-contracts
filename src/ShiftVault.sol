@@ -41,6 +41,7 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
         uint256 batchId;
         uint256 requestedAt;
         uint256 sharesAmount;
+        uint32 timelock;
     }
 
     struct BatchState {
@@ -71,7 +72,7 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
     }
 
     /// @notice Request a deposit. Only one active request per user.
-    function reqDeposit() external nonReentrant {
+    function reqDeposit() external nonReentrant notPaused {
         require(isWhitelisted[msg.sender] || !whitelistEnabled, "ShiftVault: not whitelisted");
         DepositState storage state = depositStates[msg.sender];
         require(!state.isPriceUpdated, "ShiftVault: deposit request already exists");
@@ -126,6 +127,7 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
         userState.sharesAmount = _shareAmount;
         userState.batchId = currentBatchId;
         userState.requestedAt = block.timestamp;
+        userState.timelock = timelock;
     }
 
     /// @notice Withdraw tokens after batch resolved and timelock passed.
@@ -133,7 +135,7 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
         WithdrawState storage userState = userWithdrawStates[msg.sender];
         uint256 shares = userState.sharesAmount;
         require(shares > 0, "ShiftVault: no shares to withdraw");
-        require(block.timestamp >= userState.requestedAt + uint256(timelock), "ShiftVault: withdrawal locked");
+        require(block.timestamp >= userState.requestedAt + uint256(userState.timelock), "ShiftVault: withdrawal locked");
 
         BatchState storage batchState = batchWithdrawStates[userState.batchId];
         uint256 rate = batchState.rate;
@@ -187,7 +189,7 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
 
     /// @notice Called by TVL feed to allow user deposit after price update.
     /// @param _user User address allowed to deposit.
-    function allowDeposit(address _user) external {
+    function allowDeposit(address _user) external notPaused {
         require(msg.sender == address(tvlFeed), "ShiftVault: caller is not TVL feed");
         DepositState storage state = depositStates[_user];
         if (state.isPriceUpdated || state.expirationTime <= block.timestamp) return;
@@ -209,7 +211,7 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
     }
 
     /// @notice Process current withdrawal batch. Only executor.
-    function processWithdraw() external onlyExecutor {
+    function processWithdraw() external onlyExecutor notPaused {
         BatchState storage batchState = batchWithdrawStates[currentBatchId];
         require(batchState.rate == 0, "ShiftVault: batch already resolved");
 
@@ -222,7 +224,7 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
     /// @notice Resolve withdrawal batch by setting rate and transferring tokens in.
     /// @param _tokenAmount Tokens to transfer in for withdrawals.
     /// @param _rate Conversion rate for the batch.
-    function resolveWithdraw(uint256 _tokenAmount, uint256 _rate) external onlyExecutor nonReentrant {
+    function resolveWithdraw(uint256 _tokenAmount, uint256 _rate) external onlyExecutor nonReentrant notPaused {
         require(_rate > 0, "ShiftVault: invalid rate");
 
         uint256 batchId = currentBatchId - 1;
@@ -241,9 +243,17 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
 
     /// @notice Send funds to resolver. Only executor.
     /// @param _tokenAmount Amount of tokens to send.
-    function sendFundsToResolver(uint256 _tokenAmount) external onlyExecutor nonReentrant {
+    function sendFundsToResolver(uint256 _tokenAmount) external onlyExecutor nonReentrant notPaused {
         require(_tokenAmount > 0, "ShiftVault: amount is zero");
         baseToken.safeTransfer(msg.sender, _tokenAmount);
+    }
+
+    /// @notice Update the maximum TVL allowed in the vault. Only admin.
+    /// @param _amount New maximum TVL value.
+    function updateMaxTvl(uint256 _amount) public override onlyAdmin {
+        uint256 currentTvl = tvlFeed.getLastTvl().value;
+        require(_amount <= currentTvl, "ShiftVault: new max TVL below current TVL");
+        super.updateMaxTvl(_amount);
     }
 
     // =========================
