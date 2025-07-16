@@ -22,6 +22,8 @@ abstract contract ShiftManager is AccessModifier {
 
     mapping(address => bool) internal isWhitelisted;
 
+    event MaxTvlUpdated(uint256 indexed timestamp, uint256 newMaxTvl);
+
     /// @notice Ensures contract is not paused.
     modifier notPaused() {
         require(!paused, "ShiftManager: paused");
@@ -43,6 +45,7 @@ abstract contract ShiftManager is AccessModifier {
     ) AccessModifier(_accessControlContract) {
         require(_accessControlContract != address(0), "ShiftManager: zero access control");
         require(_feeCollector != address(0), "ShiftManager: zero fee collector");
+        require(_timeLock > 0, "ShiftManager: zero timelock");
         feeCollector = _feeCollector;
         minDepositAmount = _minDeposit;
         maxTvl = _maxTvl;
@@ -81,7 +84,7 @@ abstract contract ShiftManager is AccessModifier {
     /// @notice Update timelock duration.
     /// @param _newTimelock New timelock value.
     function updateTimelock(uint32 _newTimelock) external onlyAdmin {
-        require(_newTimelock > 0, "ShiftManager: zero timelock");
+        require(_newTimelock > 0 && _newTimelock <= 30 days, "ShiftManager: invalid timelock");
         timelock = _newTimelock;
     }
 
@@ -109,10 +112,12 @@ abstract contract ShiftManager is AccessModifier {
     }
 
     /// @notice Update maximum total value locked (TVL).
+    /// @dev This function will be overridden by child contracts <ShiftVault>.
     /// @param _amount New TVL cap.
-    function updateMaxTvl(uint256 _amount) external onlyAdmin {
+    function updateMaxTvl(uint256 _amount) public virtual onlyAdmin {
         require(_amount > 0, "ShiftManager: zero max TVL");
         maxTvl = _amount;
+        emit MaxTvlUpdated(block.timestamp, _amount);
     }
 
     /// @notice Convert basis points to 18-decimal fixed point.

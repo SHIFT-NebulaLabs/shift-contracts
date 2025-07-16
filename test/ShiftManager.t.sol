@@ -87,6 +87,9 @@ contract ShiftManagerTest is Test {
         manager.updateTimelock(0);
         vm.prank(admin);
         vm.expectRevert();
+        manager.updateTimelock(31 days);
+        vm.prank(admin);
+        vm.expectRevert();
         manager.updatePerformanceFee(0);
         vm.prank(admin);
         vm.expectRevert();
