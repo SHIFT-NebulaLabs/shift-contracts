@@ -52,7 +52,7 @@ contract ShiftTvlFeed is AccessModifier {
         require(_user != address(0), "ShiftTvlFeed: zero user address");
         require(_value > 0, "ShiftTvlFeed: TVL must be positive");
         tvlHistory.push(TvlData({ value: _value, timestamp: block.timestamp }));
-        shiftVault.allowDeposit(_user);
+        shiftVault.allowDeposit(_user, tvlHistory.length - 1);
         emit TvlUpdated(_value, block.timestamp);
     }
 
@@ -68,6 +68,15 @@ contract ShiftTvlFeed is AccessModifier {
         uint256 len = tvlHistory.length;
         if (len == 0) return TvlData({ value: 0, timestamp: 0 });
         return tvlHistory[len - 1];
+    }
+
+    /// @notice Retrieves a specific TVL (Total Value Locked) entry from the history by index.
+    /// @dev Reverts if the provided index is out of bounds.
+    /// @param _index The index of the TVL entry to retrieve.
+    /// @return The TvlData struct at the specified index in the tvlHistory array.
+    function getTvlEntry(uint256 _index) external view returns (TvlData memory) {
+        require(_index < tvlHistory.length, "ShiftTvlFeed: index out of bounds");
+        return tvlHistory[_index];
     }
 
     /// @notice Get last `_count` TVL entries in reverse chronological order.

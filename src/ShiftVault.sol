@@ -35,6 +35,7 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
     struct DepositState {
         bool isPriceUpdated;
         uint256 expirationTime;
+        uint256 requestIndex;
     }
 
     struct WithdrawState {
@@ -99,7 +100,7 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
             (uint256 baseToken18Decimals, ) = _normalize(_tokenAmount, baseToken.decimals());
             shares = baseToken18Decimals;
         } else {
-            shares = _calcSharesFromToken(_tokenAmount);
+            shares = _calcSharesFromToken(_tokenAmount, state.requestIndex);
         }
         _mint(msg.sender, shares);
 
@@ -189,11 +190,12 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
 
     /// @notice Called by TVL feed to allow user deposit after price update.
     /// @param _user User address allowed to deposit.
-    function allowDeposit(address _user) external notPaused {
+    function allowDeposit(address _user, uint256 _tvlIndex) external notPaused {
         require(msg.sender == address(tvlFeed), "ShiftVault: caller is not TVL feed");
         DepositState storage state = depositStates[_user];
         if (state.isPriceUpdated || state.expirationTime <= block.timestamp) return;
         state.isPriceUpdated = true;
+        state.requestIndex = _tvlIndex;
         emit DepositAllowed(_user, state.expirationTime);
     }
 
@@ -296,11 +298,13 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
     // Internal/private functions
     // =========================
 
-    /// @notice Calculate shares to mint for given token deposit.
-    /// @param _tokenAmount Base tokens deposited.
-    function _calcSharesFromToken(uint256 _tokenAmount) internal view returns (uint256) {
+    /// @notice Calculate shares to mint for a given token deposit based on TVL at request time.
+    /// @param _tokenAmount Amount of base tokens deposited.
+    /// @param _tvlIndex TVL feed index at the time of deposit request.
+    /// @return Number of shares to mint (18 decimals).
+    function _calcSharesFromToken(uint256 _tokenAmount, uint256 _tvlIndex) internal view returns (uint256) {
         (uint256 baseToken18Decimals, ) = _normalize(_tokenAmount, baseToken.decimals());
-        (uint256 tvl18Decimals, ) = _normalize(tvlFeed.getLastTvl().value, tvlFeed.decimals());
+        (uint256 tvl18Decimals, ) = _normalize(tvlFeed.getTvlEntry(_tvlIndex).value, tvlFeed.decimals());
 
         UD60x18 ratio = ud(baseToken18Decimals).div(ud(tvl18Decimals));
         UD60x18 shares = ratio.mul(ud(totalSupply()));

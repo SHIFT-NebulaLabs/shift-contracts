@@ -4,43 +4,43 @@ import "../../src/ShiftVault.sol";
 
 contract ShiftVaultHarness is ShiftVault {
     constructor(
-        address access,
-        address token,
-        address tvlFeed,
-        address feeCollector,
-        uint256 minDeposit,
-        uint256 maxTvl,
-        uint32 timelock
-    ) ShiftVault(access, token, tvlFeed, feeCollector, minDeposit, maxTvl, timelock) {}
+        address _access,
+        address _token,
+        address _tvlFeed,
+        address _feeCollector,
+        uint256 _minDeposit,
+        uint256 _maxTvl,
+        uint32 _timelock
+    ) ShiftVault(_access, _token, _tvlFeed, _feeCollector, _minDeposit, _maxTvl, _timelock) {}
 
-    function exposed_calcSharesFromToken(uint256 amount) external view returns (uint256) {
-        return _calcSharesFromToken(amount);
+    function exposed_calcSharesFromToken(uint256 _amount, uint256 _tvlIndex) external view returns (uint256) {
+        return _calcSharesFromToken(_amount, _tvlIndex);
     }
-    function exposed_calcTokenFromShares(uint256 share, uint256 rate) external view returns (uint256) {
-        return _calcTokenFromShares(share, rate);
+    function exposed_calcTokenFromShares(uint256 _share, uint256 _rate) external view returns (uint256) {
+        return _calcTokenFromShares(_share, _rate);
     }
-    function exposed_normalize(uint256 a, uint8 d) external view returns (uint256, uint8) {
-        return _normalize(a, d);
+    function exposed_normalize(uint256 _a, uint8 _d) external view returns (uint256, uint8) {
+        return _normalize(_a, _d);
     }
-    function exposed_calcPerformanceFee(uint256 a) external view returns (uint256, uint256) {
-        return _calcPerformanceFee(a);
+    function exposed_calcPerformanceFee(uint256 _a) external view returns (uint256, uint256) {
+        return _calcPerformanceFee(_a);
     }
-    function exposed_calcMaintenanceFee(uint256 t) external view returns (uint256) {
-        return _calcMaintenanceFee(t);
+    function exposed_calcMaintenanceFee(uint256 _t) external view returns (uint256) {
+        return _calcMaintenanceFee(_t);
     }
     function exposed_isExpired() external view returns (bool) {
         return _isExpired();
     }
-    function exposed_depositState(address user) external view returns (bool, uint256) {
-        DepositState storage s = depositStates[user];
+    function exposed_depositState(address _user) external view returns (bool, uint256) {
+        DepositState storage s = depositStates[_user];
         return (s.isPriceUpdated, s.expirationTime);
     }
-    function exposed_userWithdrawState(address user) external view returns (uint256, uint256, uint256) {
-        WithdrawState storage ws = userWithdrawStates[user];
+    function exposed_userWithdrawState(address _user) external view returns (uint256, uint256, uint256) {
+        WithdrawState storage ws = userWithdrawStates[_user];
         return (ws.batchId, ws.requestedAt, ws.sharesAmount);
     }
-    function exposed_batchState(uint256 batchId) external view returns (uint256, uint256) {
-        BatchState storage bs = batchWithdrawStates[batchId];
+    function exposed_batchState(uint256 _batchId) external view returns (uint256, uint256) {
+        BatchState storage bs = batchWithdrawStates[_batchId];
         return (bs.totalShares, bs.rate);
     }
 }

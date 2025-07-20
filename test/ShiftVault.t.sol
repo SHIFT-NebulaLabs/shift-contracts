@@ -3,21 +3,23 @@ pragma solidity ^0.8.28;
 import "forge-std/Test.sol";
 import "./mocks/MockAccessControl.sol";
 import "./mocks/MockERC20.sol";
-import "./mocks/MockTvlFeed.sol";
+import "../src/ShiftTvlFeed.sol";
 import "./mocks/ShiftVaultHarness.sol";
 
 contract ShiftVaultTest is Test {
     MockAccessControl access;
     MockERC20 token;
-    MockTvlFeed tvlFeed;
+    ShiftTvlFeed tvlFeed;
     ShiftVaultHarness vault;
 
     address constant ADMIN = address(1);
     address constant EXECUTOR = address(2);
     address constant FEE_COLLECTOR = address(3);
     address constant USER = address(4);
+    address constant ORACLE = address(5);
 
     bytes32 constant EXECUTOR_ROLE = keccak256("EXECUTOR_ROLE");
+    bytes32 constant ORACLE_ROLE = keccak256("ORACLE_ROLE");
 
     uint256 constant MIN_DEPOSIT = 1_000_000;
     uint256 constant INITIAL_BALANCE = 10_000_000;
@@ -27,8 +29,9 @@ contract ShiftVaultTest is Test {
         access = new MockAccessControl();
         access.grantRole(0x00, ADMIN);
         access.grantRole(EXECUTOR_ROLE, EXECUTOR);
+        access.grantRole(ORACLE_ROLE, ORACLE);
         token = new MockERC20(6);
-        tvlFeed = new MockTvlFeed();
+        tvlFeed = new ShiftTvlFeed(address(access));
         vault = new ShiftVaultHarness(
             address(access),
             address(token),
@@ -38,6 +41,7 @@ contract ShiftVaultTest is Test {
             1_000_000_000,
             1 days
         );
+        tvlFeed.initialize(address(vault));
         vm.prank(ADMIN);
         vault.updatePerformanceFee(100);
         vm.prank(ADMIN);
@@ -54,8 +58,8 @@ contract ShiftVaultTest is Test {
         vm.startPrank(user);
         vault.reqDeposit();
         vm.stopPrank();
-        vm.prank(address(tvlFeed));
-        vault.allowDeposit(user);
+        vm.prank(ORACLE);
+        tvlFeed.updateTvlForDeposit(user, amount);
         vm.startPrank(user);
         token.approve(address(vault), amount);
     }
@@ -65,7 +69,6 @@ contract ShiftVaultTest is Test {
     /// @notice Tests the full deposit and withdraw flow for a user
     function testDepositAndWithdrawFlow() public {
         _setupUser(USER, INITIAL_BALANCE);
-        tvlFeed.setLastTvl(10_000_000);
         vault.deposit(5_000_000);
         assertEq(vault.balanceOf(USER), 5_000_000 * 1e12);
         assertEq(token.balanceOf(address(vault)), 5_000_000);
@@ -100,9 +103,8 @@ contract ShiftVaultTest is Test {
     }
 
     /// @notice Tests that a double withdraw reverts as expected
-    function testDoubleWithdrawReverts() public {
+    function testDoubleWithdrawReverts() public { 
         _setupUser(USER, INITIAL_BALANCE);
-        tvlFeed.setLastTvl(10_000_000);
         vault.deposit(5_000_000);
         uint256 shares = vault.balanceOf(USER);
         vault.reqWithdraw(shares);
@@ -127,7 +129,6 @@ contract ShiftVaultTest is Test {
     /// @notice Tests that resolving a withdraw twice reverts
     function testResolveWithdrawTwiceReverts() public {
         _setupUser(USER, INITIAL_BALANCE);
-        tvlFeed.setLastTvl(10_000_000);
         vault.deposit(5_000_000);
         uint256 shares = vault.balanceOf(USER);
         vault.reqWithdraw(shares);
@@ -147,7 +148,6 @@ contract ShiftVaultTest is Test {
 
     /// @notice Tests calculation of shares from token amount
     function testCalcSharesFromToken() public {
-        tvlFeed.setLastTvl(10_000_000);
         address otherUser = address(0xBEEF);
         _setupUser(otherUser, 10_000_000);
         vault.deposit(10_000_000);
@@ -158,13 +158,12 @@ contract ShiftVaultTest is Test {
         uint256 tvl = 10_000_000;
         uint256 expectedShares = (amount * 1e12 * totalSupply) / (tvl * 1e12);
 
-        uint256 shares = vault.exposed_calcSharesFromToken(amount);
+        uint256 shares = vault.exposed_calcSharesFromToken(amount, 0);
         assertEq(shares, expectedShares);
     }
 
     /// @notice Tests calculation of token amount from shares
     function testCalcTokenFromShares() public {
-        tvlFeed.setLastTvl(20_000_000);
         address otherUser = address(0xBEEF);
         _setupUser(otherUser, 20_000_000);
         vault.deposit(20_000_000);
@@ -181,7 +180,6 @@ contract ShiftVaultTest is Test {
 
     /// @notice Tests calculation of token amount from shares with a custom rate
     function testCalcTokenFromSharesWithCustomRate() public {
-        tvlFeed.setLastTvl(100_000_000);
         address otherUser = address(0xBEEF);
         _setupUser(otherUser, 50_000_000);
         vault.deposit(50_000_000);
@@ -199,17 +197,19 @@ contract ShiftVaultTest is Test {
     /// @notice Fuzz test for shares calculation from token amount
     function testFuzzCalcShares(uint256 amount) public {
         vm.assume(amount >= MIN_DEPOSIT && amount <= 1_000_000_000);
-        tvlFeed.setLastTvl(100_000_000);
 
         address otherUser = address(0xBEEF);
         _setupUser(otherUser, 10_000_000);
         vault.deposit(10_000_000);
         vm.stopPrank();
 
+        vm.prank(ORACLE);
+        tvlFeed.updateTvl(100_000_000); // Set a fixed TV
+
         uint256 totalSupply = vault.totalSupply();
         uint256 tvl = 100_000_000;
         uint256 expectedShares = (amount * 1e12 * totalSupply) / (tvl * 1e12);
-        uint256 shares = vault.exposed_calcSharesFromToken(amount);
+        uint256 shares = vault.exposed_calcSharesFromToken(amount, 1);
 
         assertEq(shares, expectedShares);
     }
@@ -236,7 +236,8 @@ contract ShiftVaultTest is Test {
     /// @notice Tests maintenance fee calculation over a day
     function testMaintenanceFee() public {
         uint256 tvl = 100_000_000;
-        tvlFeed.setLastTvl(tvl);
+        vm.prank(ORACLE);
+        tvlFeed.updateTvl(tvl);
         uint256 lastClaim = block.timestamp;
         skip(1 days);
         uint256 fee = vault.exposed_calcMaintenanceFee(lastClaim);
@@ -268,7 +269,7 @@ contract ShiftVaultTest is Test {
         vault.reqDeposit();
         vm.stopPrank();
         vm.prank(address(tvlFeed));
-        vault.allowDeposit(USER);
+        vault.allowDeposit(USER, 1);
         vm.startPrank(USER);
         token.approve(address(vault), MIN_DEPOSIT - 1);
         vm.expectRevert("ShiftVault: deposit below minimum");

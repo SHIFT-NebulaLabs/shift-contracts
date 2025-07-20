@@ -4,17 +4,17 @@ import "../../src/ShiftManager.sol";
 
 contract ShiftManagerHarness is ShiftManager {
     constructor(
-        address access,
-        address feeCollector,
-        uint256 minDeposit,
-        uint256 maxTvl,
-        uint32 timelock
-    ) ShiftManager(access, feeCollector, minDeposit, maxTvl, timelock) {}
+        address _access,
+        address _feeCollector,
+        uint256 _minDeposit,
+        uint256 _maxTvl,
+        uint32 _timelock
+    ) ShiftManager(_access, _feeCollector, _minDeposit, _maxTvl, _timelock) {}
 
-    function exposed_calc18ptFromBps(uint16 bps) external pure returns (uint256) {
-        return _calc18ptFromBps(bps);
+    function exposed_calc18ptFromBps(uint16 _bps) external pure returns (uint256) {
+        return _calc18ptFromBps(_bps);
     }
-    function exposed_isWhitelisted(address user) external view returns (bool) {
-        return isWhitelisted[user];
+    function exposed_isWhitelisted(address _user) external view returns (bool) {
+        return isWhitelisted[_user];
     }
 }

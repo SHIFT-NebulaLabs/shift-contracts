@@ -13,12 +13,14 @@ abstract contract ShiftManager is AccessModifier {
 
     uint16 public performanceFeeBps; // 1% = 100 basis points
     uint16 public maintenanceFeeBpsAnnual; // 1% = 100 basis points
+    uint16 public bufferBps; // 1% = 100 basis points
     uint32 public timelock;
     uint256 public minDepositAmount;
     uint256 public maxTvl;
     address public feeCollector;
     uint256 internal performanceFee18pt; // 1% = 0.01 * 10^18
     uint256 internal maintenanceFeePerSecond18pt; // 1% = 0.01 * 10^18
+    uint256 internal buffer18pt; // 1% = 0.01 * 10^18
 
     mapping(address => bool) internal isWhitelisted;
 
@@ -46,6 +48,7 @@ abstract contract ShiftManager is AccessModifier {
         require(_accessControlContract != address(0), "ShiftManager: zero access control");
         require(_feeCollector != address(0), "ShiftManager: zero fee collector");
         require(_timeLock > 0, "ShiftManager: zero timelock");
+        _validateDepositAndTvl(_minDeposit, _maxTvl);
         feeCollector = _feeCollector;
         minDepositAmount = _minDeposit;
         maxTvl = _maxTvl;
@@ -91,6 +94,7 @@ abstract contract ShiftManager is AccessModifier {
     /// @notice Update performance fee (basis points).
     /// @param _feeBps New performance fee in basis points.
     function updatePerformanceFee(uint16 _feeBps) external onlyAdmin {
+        require(paused, "ShiftManager: contract not paused");
         require(_feeBps > 0, "ShiftManager: zero performance fee");
         performanceFeeBps = _feeBps;
         performanceFee18pt = _calc18ptFromBps(_feeBps);
@@ -106,8 +110,8 @@ abstract contract ShiftManager is AccessModifier {
 
     /// @notice Update minimum deposit amount.
     /// @param _amount New minimum deposit.
-    function updateMinDeposit(uint256 _amount) external onlyAdmin {
-        require(_amount > 0, "ShiftManager: zero min deposit");
+    function updateMinDeposit(uint256 _amount) public onlyAdmin {
+        _validateDepositAndTvl(_amount, maxTvl);
         minDepositAmount = _amount;
     }
 
@@ -115,9 +119,13 @@ abstract contract ShiftManager is AccessModifier {
     /// @dev This function will be overridden by child contracts <ShiftVault>.
     /// @param _amount New TVL cap.
     function updateMaxTvl(uint256 _amount) public virtual onlyAdmin {
-        require(_amount > 0, "ShiftManager: zero max TVL");
+        _validateDepositAndTvl(minDepositAmount, _amount);
         maxTvl = _amount;
         emit MaxTvlUpdated(block.timestamp, _amount);
+    }
+
+    function updateBufferBps(uint16 _bufferBps) external onlyAdmin {
+        bufferBps = _bufferBps;
     }
 
     /// @notice Convert basis points to 18-decimal fixed point.
@@ -125,5 +133,14 @@ abstract contract ShiftManager is AccessModifier {
     /// @return Fee as 18-decimal fixed point.
     function _calc18ptFromBps(uint16 _feeBps) internal pure returns (uint256) {
         return (uint256(_feeBps) * 1e18) / 10_000;
+    }
+
+    /// @notice Validates deposit and TVL constraints.
+    /// @param _minDeposit Il nuovo deposito minimo.
+    /// @param _maxTvl Il nuovo TVL massimo.
+    function _validateDepositAndTvl(uint256 _minDeposit, uint256 _maxTvl) internal pure {
+        require(_minDeposit > 0, "ShiftManager: zero min deposit");
+        require(_maxTvl > 0, "ShiftManager: zero max TVL");
+        require(_minDeposit <= _maxTvl, "ShiftManager: min deposit exceeds max TVL");
     }
 }

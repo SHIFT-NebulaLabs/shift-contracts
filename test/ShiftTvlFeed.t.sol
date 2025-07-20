@@ -7,7 +7,7 @@ import "./mocks/ShiftTvlFeedHarness.sol";
 
 /// @notice MockVault simulates a vault for test purposes
 contract MockVault {
-    function allowDeposit(address) external {}
+    function allowDeposit(address, uint256) external {}
 }
 
 /// @notice Test suite for ShiftTvlFeed
@@ -67,6 +67,8 @@ contract ShiftTvlFeedTest is Test {
         vm.prank(oracle);
         tvlFeed.updateTvlForDeposit(address(0x99), 123);
         assertEq(tvlFeed.exposed_tvlHistoryLength(), 1);
+        ShiftTvlFeed.TvlData memory d = tvlFeed.exposed_tvlHistoryAt(0);
+        assertEq(d.value, 123);
     }
 
     /// @notice Tests that getLastTvlEntries returns the correct last N values
@@ -79,4 +81,15 @@ contract ShiftTvlFeedTest is Test {
         assertEq(arr[0].value, 104);
         assertEq(arr[2].value, 102);
     }
+
+    function testGetTvlEntry() public {
+        vm.startPrank(oracle);
+        for (uint256 i; i < 5; ++i) tvlFeed.updateTvl(i + 100);
+        vm.stopPrank();
+        ShiftTvlFeed.TvlData memory entry = tvlFeed.getTvlEntry(2);
+        assertEq(entry.value, 102);
+    }
+
+
+
 }
