@@ -4,11 +4,11 @@ pragma solidity ^0.8.28;
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import { UD60x18, ud } from "@prb/math/src/UD60x18.sol";
-import { IShiftTvlFeed } from "./interface/IShiftTvlFeed.sol";
-import { AccessModifier } from "./utils/AccessModifier.sol";
-import { ShiftManager } from "./ShiftManager.sol";
-import { VALIDITY_DURATION } from "./utils/Constants.sol";
+import {UD60x18, ud} from "@prb/math/src/UD60x18.sol";
+import {IShiftTvlFeed} from "./interface/IShiftTvlFeed.sol";
+import {AccessModifier} from "./utils/AccessModifier.sol";
+import {ShiftManager} from "./ShiftManager.sol";
+import {VALIDITY_DURATION} from "./utils/Constants.sol";
 
 /// @title ShiftVault
 /// @notice Manages liquidity and vault operations for the Shift protocol.
@@ -58,10 +58,7 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
         uint256 _minDeposit,
         uint256 _maxTvl,
         uint32 _timeLock
-    )
-        ShiftManager(_accessControlContract, _feeCollector, _minDeposit, _maxTvl, _timeLock)
-        ERC20("Shift LP", "SLP")
-    {
+    ) ShiftManager(_accessControlContract, _feeCollector, _minDeposit, _maxTvl, _timeLock) ERC20("Shift LP", "SLP") {
         require(_tokenContract != address(0), "ShiftVault: zero token address");
         require(_tvlFeedContract != address(0), "ShiftVault: zero TVL feed address");
 
@@ -97,7 +94,7 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
         uint256 shares;
         if (tvlFeed.getLastTvl().value == 0 || totalSupply() == 0) {
             // First deposit: 1:1 mapping to 18 decimals
-            (uint256 baseToken18Decimals, ) = _normalize(_tokenAmount, baseToken.decimals());
+            (uint256 baseToken18Decimals,) = _normalize(_tokenAmount, baseToken.decimals());
             shares = baseToken18Decimals;
         } else {
             shares = _calcSharesFromToken(_tokenAmount, state.requestIndex);
@@ -105,7 +102,9 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
         _mint(msg.sender, shares);
 
         if (balanceOf(msg.sender) == shares) {
-            unchecked { ++activeUsers; }
+            unchecked {
+                ++activeUsers;
+            }
         }
         emit Deposited(msg.sender, _tokenAmount);
     }
@@ -161,7 +160,9 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
         if (feeAmount > 0) baseToken.safeTransfer(feeCollector, feeAmount);
 
         if (balanceOf(msg.sender) == 0 && activeUsers > 0) {
-            unchecked { --activeUsers; }
+            unchecked {
+                --activeUsers;
+            }
         }
     }
 
@@ -173,7 +174,7 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
         BatchState storage batchState = batchWithdrawStates[userState.batchId];
 
         // Check if batch is still pending
-        if (currentBatchId != userState.batchId){
+        if (currentBatchId != userState.batchId) {
             require(batchState.rate != 0, "ShiftVault: cannot cancel, withdrawal is processing");
             amountReadyForWithdraw -= userState.sharesAmount;
         }
@@ -244,10 +245,9 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
     }
 
     /// @notice Send funds to resolver. Only executor.
-    /// @param _tokenAmount Amount of tokens to send.
-    function sendFundsToResolver(uint256 _tokenAmount) external onlyExecutor nonReentrant notPaused {
-        require(_tokenAmount > 0, "ShiftVault: amount is zero");
-        baseToken.safeTransfer(msg.sender, _tokenAmount);
+    function sendFundsToResolver() external onlyExecutor nonReentrant notPaused {
+        uint256 liquidity = _calcResolverLiquidity();
+        baseToken.safeTransfer(msg.sender, liquidity);
     }
 
     /// @notice Update the maximum TVL allowed in the vault. Only admin.
@@ -267,12 +267,11 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
     /// @return shareAmount Shares requested for withdrawal.
     /// @return tokenAmount Tokens to be received.
     /// @return unlockTime Withdrawal unlock timestamp.
-    function getWithdrawStatus() external view returns (
-        uint8 status,
-        uint256 shareAmount,
-        uint256 tokenAmount,
-        uint256 unlockTime
-    ) {
+    function getWithdrawStatus()
+        external
+        view
+        returns (uint8 status, uint256 shareAmount, uint256 tokenAmount, uint256 unlockTime)
+    {
         WithdrawState storage userState = userWithdrawStates[msg.sender];
         uint256 shares = userState.sharesAmount;
         if (shares == 0) return (0, 0, 0, 0); // No withdrawal requested
@@ -303,10 +302,10 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
     /// @param _tvlIndex TVL feed index at the time of deposit request.
     /// @return Number of shares to mint (18 decimals).
     function _calcSharesFromToken(uint256 _tokenAmount, uint256 _tvlIndex) internal view returns (uint256) {
-        (uint256 baseToken18Decimals, ) = _normalize(_tokenAmount, baseToken.decimals());
-        (uint256 tvl18Decimals, ) = _normalize(tvlFeed.getTvlEntry(_tvlIndex).value, tvlFeed.decimals());
+        (uint256 baseToken18pt,) = _normalize(_tokenAmount, baseToken.decimals());
+        (uint256 tvl18pt,) = _normalize(tvlFeed.getTvlEntry(_tvlIndex).value, tvlFeed.decimals());
 
-        UD60x18 ratio = ud(baseToken18Decimals).div(ud(tvl18Decimals));
+        UD60x18 ratio = ud(baseToken18pt).div(ud(tvl18pt));
         UD60x18 shares = ratio.mul(ud(totalSupply()));
         return shares.unwrap(); // UD60x18 to uint256 (18 decimals)
     }
@@ -315,12 +314,12 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
     /// @param _shareAmount LP shares.
     /// @param _rate Conversion rate (6 decimals).
     function _calcTokenFromShares(uint256 _shareAmount, uint256 _rate) internal view returns (uint256) {
-        (, uint8 baseTokenDecimalsTo18) = _normalize(_shareAmount, baseToken.decimals());
-        (uint256 rate18Decimals, ) = _normalize(_rate, tvlFeed.decimals());
+        (, uint8 baseTokenScaleFactor) = _normalize(1, baseToken.decimals()); // Only to retrieve missing decimals from base token
+        (uint256 rate18pt,) = _normalize(_rate, tvlFeed.decimals());
 
-        UD60x18 ratio = ud(rate18Decimals);
+        UD60x18 ratio = ud(rate18pt);
         UD60x18 tokenAmount = ratio.mul(ud(_shareAmount));
-        return baseTokenDecimalsTo18 == 0 ? tokenAmount.unwrap() : tokenAmount.unwrap() / 10**baseTokenDecimalsTo18; // UD60x18 to uint256 (token decimals)
+        return baseTokenScaleFactor == 0 ? tokenAmount.unwrap() : tokenAmount.unwrap() / 10 ** baseTokenScaleFactor; // UD60x18 to uint256 (token decimals)
     }
 
     /// @notice Normalize amount to 18 decimals.
@@ -329,7 +328,7 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
     /// @return amount Normalized amount.
     /// @return scaleFactor Decimals scaled.
     function _normalize(uint256 _amount, uint8 _decimals) internal view returns (uint256 amount, uint8 scaleFactor) {
-        amount = _decimals == decimals() ? _amount : _amount * 10**(decimals() - _decimals);
+        amount = _decimals == decimals() ? _amount : _amount * 10 ** (decimals() - _decimals);
         scaleFactor = _decimals < decimals() ? decimals() - _decimals : 0;
     }
 
@@ -338,23 +337,55 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
     /// @return feeAmount Fee amount.
     /// @return userAmount User amount after fee.
     function _calcPerformanceFee(uint256 _tokenAmount) internal view returns (uint256 feeAmount, uint256 userAmount) {
-        UD60x18 fee = ud(_tokenAmount).mul(ud(performanceFee18pt)); // 1% fee
-        feeAmount = fee.unwrap(); // UD60x18 to uint256 (18 decimals)
-        userAmount = ud(_tokenAmount).sub(fee).unwrap();
+        (uint256 baseToken18pt, uint8 baseTokenScaleFactor) = _normalize(_tokenAmount, baseToken.decimals());
+        UD60x18 fee = ud(baseToken18pt).mul(ud(performanceFee18pt));
+        uint256 feeRaw = fee.unwrap();
+        if (baseTokenScaleFactor > 0) {
+            feeAmount = feeRaw / 10 ** baseTokenScaleFactor;
+            userAmount = _tokenAmount - feeAmount;
+        } else {
+            feeAmount = feeRaw;
+            userAmount = _tokenAmount - feeAmount;
+        }
     }
 
     /// @notice Calculate maintenance fee since last claim.
     /// @param _lastClaimTimestamp Last claim timestamp.
     /// @return Maintenance fee to mint.
     function _calcMaintenanceFee(uint256 _lastClaimTimestamp) internal view returns (uint256) {
-        (uint256 tvl18Decimals, ) = _normalize(tvlFeed.getLastTvl().value, tvlFeed.decimals());
+        (uint256 tvl18pt,) = _normalize(tvlFeed.getLastTvl().value, tvlFeed.decimals());
         uint256 elapsed = block.timestamp - _lastClaimTimestamp;
-        return (tvl18Decimals * maintenanceFeePerSecond18pt * elapsed) / 1e18;
+        return (tvl18pt * maintenanceFeePerSecond18pt * elapsed) / 1e18;
     }
+
+    function _calcBufferValue() internal view returns (uint256 bufferValue18pt, uint256 tvlValue18pt, uint8 tokenScaleFactor) {
+        (uint256 tvl18pt, ) = _normalize(tvlFeed.getLastTvl().value, tvlFeed.decimals());
+        (, uint8 baseTokenScaleFactor) = _normalize(1, baseToken.decimals()); // Only to retrieve missing decimals from base token
+
+        if (bufferBps == 0) return (0, tvl18pt, baseTokenScaleFactor); // No buffer, return TVL only
+
+        UD60x18 buffer = ud(tvl18pt).mul(ud(buffer18pt)).div(ud(1e18));
+        bufferValue18pt = buffer.unwrap(); // UD60x18 to uint256 (token decimals)
+        tvlValue18pt = tvl18pt;
+        tokenScaleFactor = baseTokenScaleFactor;
+    }
+
+    function _calcResolverLiquidity() internal view returns (uint256) {
+        (uint256 bufferValue18pt, uint256 tvlValue18pt, uint8 tokenScaleFactor) = _calcBufferValue();
+        uint256 liquidity = 0;
+        if(tokenScaleFactor == 0){
+            liquidity = tvlValue18pt - bufferValue18pt - amountReadyForWithdraw;
+        }else{
+            uint256 withdraw18pt = amountReadyForWithdraw * 10 ** tokenScaleFactor;
+            liquidity = (tvlValue18pt - bufferValue18pt - withdraw18pt) / 10 ** tokenScaleFactor;
+        }
+        return liquidity > baseToken.balanceOf(address(this)) ? 0 : liquidity;
+    }
+
 
     /// @notice Check if user's deposit request expired.
     /// @return True if expired, false otherwise.
-    function _isExpired() internal view returns(bool) {
+    function _isExpired() internal view returns (bool) {
         return depositStates[msg.sender].expirationTime < block.timestamp;
     }
 }

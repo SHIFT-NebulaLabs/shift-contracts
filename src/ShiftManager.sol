@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import { AccessModifier } from "./utils/AccessModifier.sol";
-import { SECONDS_IN_YEAR } from "./utils/Constants.sol";
+import {AccessModifier} from "./utils/AccessModifier.sol";
+import {SECONDS_IN_YEAR} from "./utils/Constants.sol";
 
 /// @title ShiftManager
 /// @notice Shift protocol parameters, fees, and whitelist management.
@@ -126,6 +126,7 @@ abstract contract ShiftManager is AccessModifier {
 
     function updateBufferBps(uint16 _bufferBps) external onlyAdmin {
         bufferBps = _bufferBps;
+        buffer18pt = _bufferBps == 0 ? 0 : _calc18ptFromBps(_bufferBps);
     }
 
     /// @notice Convert basis points to 18-decimal fixed point.

@@ -2,8 +2,7 @@
 pragma solidity ^0.8.28;
 
 contract ShiftEarlyAccess {
-
-    mapping (address => bool) private earlyAccessUsers;
+    mapping(address => bool) private earlyAccessUsers;
     uint256 public earlyAccessCount;
 
     function joinEarlyAccess() external {

@@ -74,7 +74,9 @@ contract ShiftTvlFeedTest is Test {
     /// @notice Tests that getLastTvlEntries returns the correct last N values
     function testGetLastTvlEntries() public {
         vm.startPrank(oracle);
-        for (uint256 i; i < 5; ++i) tvlFeed.updateTvl(i + 100);
+        for (uint256 i; i < 5; ++i) {
+            tvlFeed.updateTvl(i + 100);
+        }
         vm.stopPrank();
         ShiftTvlFeed.TvlData[] memory arr = tvlFeed.getLastTvlEntries(3);
         assertEq(arr.length, 3);
@@ -84,12 +86,11 @@ contract ShiftTvlFeedTest is Test {
 
     function testGetTvlEntry() public {
         vm.startPrank(oracle);
-        for (uint256 i; i < 5; ++i) tvlFeed.updateTvl(i + 100);
+        for (uint256 i; i < 5; ++i) {
+            tvlFeed.updateTvl(i + 100);
+        }
         vm.stopPrank();
         ShiftTvlFeed.TvlData memory entry = tvlFeed.getTvlEntry(2);
         assertEq(entry.value, 102);
     }
-
-
-
 }

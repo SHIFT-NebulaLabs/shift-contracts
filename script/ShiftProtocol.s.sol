@@ -25,13 +25,7 @@ contract DeployShiftProtocol_Test is Script {
         uint32 withdrawalDelay = uint32(vm.envUint("WITHDRAWAL_DELAY"));
 
         new ShiftVault(
-            accessControl,
-            tokenContract,
-            tvlFeed,
-            feeCollector,
-            minTokenDeposit,
-            maxTvlAllowance,
-            withdrawalDelay
+            accessControl, tokenContract, tvlFeed, feeCollector, minTokenDeposit, maxTvlAllowance, withdrawalDelay
         );
 
         // IMPORTANT: The ShiftAccessControl and ShiftTvlFeed contracts must be deployed before the ShiftVault contract.
@@ -59,13 +53,7 @@ contract DeployShiftProtocol_Mainnet is Script {
         uint32 withdrawalDelay = uint32(vm.envUint("WITHDRAWAL_DELAY"));
 
         new ShiftVault(
-            accessControl,
-            tokenContract,
-            tvlFeed,
-            feeCollector,
-            minTokenDeposit,
-            maxTvlAllowance,
-            withdrawalDelay
+            accessControl, tokenContract, tvlFeed, feeCollector, minTokenDeposit, maxTvlAllowance, withdrawalDelay
         );
 
         // IMPORTANT: The ShiftAccessControl and ShiftTvlFeed contracts must be deployed before the ShiftVault contract.

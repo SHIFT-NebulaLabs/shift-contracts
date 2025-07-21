@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import { IShiftVault } from "./interface/IShiftVault.sol";
-import { AccessModifier } from "./utils/AccessModifier.sol";
+import {IShiftVault} from "./interface/IShiftVault.sol";
+import {AccessModifier} from "./utils/AccessModifier.sol";
 
 /// @title ShiftTvlFeed
 /// @notice TVL (Total Value Locked) feed for Shift protocol.
@@ -41,7 +41,7 @@ contract ShiftTvlFeed is AccessModifier {
     /// @notice Update TVL and store in history.
     /// @param _value TVL value to record.
     function updateTvl(uint256 _value) external onlyOracle initialized {
-        tvlHistory.push(TvlData({ value: _value, timestamp: block.timestamp }));
+        tvlHistory.push(TvlData({value: _value, timestamp: block.timestamp}));
         emit TvlUpdated(_value, block.timestamp);
     }
 
@@ -51,7 +51,7 @@ contract ShiftTvlFeed is AccessModifier {
     function updateTvlForDeposit(address _user, uint256 _value) external onlyOracle initialized {
         require(_user != address(0), "ShiftTvlFeed: zero user address");
         require(_value > 0, "ShiftTvlFeed: TVL must be positive");
-        tvlHistory.push(TvlData({ value: _value, timestamp: block.timestamp }));
+        tvlHistory.push(TvlData({value: _value, timestamp: block.timestamp}));
         shiftVault.allowDeposit(_user, tvlHistory.length - 1);
         emit TvlUpdated(_value, block.timestamp);
     }
@@ -66,7 +66,7 @@ contract ShiftTvlFeed is AccessModifier {
     /// @return Most recent TvlData struct.
     function getLastTvl() external view returns (TvlData memory) {
         uint256 len = tvlHistory.length;
-        if (len == 0) return TvlData({ value: 0, timestamp: 0 });
+        if (len == 0) return TvlData({value: 0, timestamp: 0});
         return tvlHistory[len - 1];
     }
 

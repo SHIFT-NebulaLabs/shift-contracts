@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
+
 import "forge-std/Test.sol";
 import "./mocks/MockAccessControl.sol";
 import "./mocks/MockERC20.sol";
@@ -33,13 +34,7 @@ contract ShiftVaultTest is Test {
         token = new MockERC20(6);
         tvlFeed = new ShiftTvlFeed(address(access));
         vault = new ShiftVaultHarness(
-            address(access),
-            address(token),
-            address(tvlFeed),
-            FEE_COLLECTOR,
-            MIN_DEPOSIT,
-            1_000_000_000,
-            1 days
+            address(access), address(token), address(tvlFeed), FEE_COLLECTOR, MIN_DEPOSIT, 1_000_000_000, 1 days
         );
         tvlFeed.initialize(address(vault));
         vm.prank(ADMIN);
@@ -78,7 +73,7 @@ contract ShiftVaultTest is Test {
         vm.stopPrank();
 
         vm.startPrank(EXECUTOR);
-        vault.sendFundsToResolver(5_000_000);
+        vault.sendFundsToResolver();
         vault.processWithdraw();
         token.approve(address(vault), 5_000_000);
         vault.resolveWithdraw(5_000_000, 1_000_000);
@@ -103,7 +98,7 @@ contract ShiftVaultTest is Test {
     }
 
     /// @notice Tests that a double withdraw reverts as expected
-    function testDoubleWithdrawReverts() public { 
+    function testDoubleWithdrawReverts() public {
         _setupUser(USER, INITIAL_BALANCE);
         vault.deposit(5_000_000);
         uint256 shares = vault.balanceOf(USER);
@@ -111,7 +106,7 @@ contract ShiftVaultTest is Test {
         vm.stopPrank();
 
         vm.startPrank(EXECUTOR);
-        vault.sendFundsToResolver(5_000_000);
+        vault.sendFundsToResolver();
         vault.processWithdraw();
         token.approve(address(vault), 5_000_000);
         vault.resolveWithdraw(5_000_000, 1_000_000);
@@ -135,7 +130,7 @@ contract ShiftVaultTest is Test {
         vm.stopPrank();
 
         vm.startPrank(EXECUTOR);
-        vault.sendFundsToResolver(5_000_000);
+        vault.sendFundsToResolver();
         vault.processWithdraw();
         token.approve(address(vault), 5_000_000);
         vault.resolveWithdraw(5_000_000, 1_000_000);
@@ -196,7 +191,7 @@ contract ShiftVaultTest is Test {
 
     /// @notice Fuzz test for shares calculation from token amount
     function testFuzzCalcShares(uint256 amount) public {
-        vm.assume(amount >= MIN_DEPOSIT && amount <= 1_000_000_000);
+        vm.assume(amount >= MIN_DEPOSIT && amount <= 1_000_000e6);
 
         address otherUser = address(0xBEEF);
         _setupUser(otherUser, 10_000_000);
@@ -233,6 +228,14 @@ contract ShiftVaultTest is Test {
         assertEq(net, gross - fee);
     }
 
+    /// @notice Fuzz test for performance fee calculation
+    function testFuzzPerformanceFee(uint256 token) public view {
+        vm.assume(token >= MIN_DEPOSIT && token < 1_000_000e6);
+        (uint256 fee, uint256 net) = vault.exposed_calcPerformanceFee(token);
+        assertEq(fee, token / 100);
+        assertEq(net, token - fee);
+    }
+
     /// @notice Tests maintenance fee calculation over a day
     function testMaintenanceFee() public {
         uint256 tvl = 100_000_000;
@@ -244,6 +247,26 @@ contract ShiftVaultTest is Test {
 
         uint256 tvl18 = tvl * 1e12;
         uint256 elapsed = 1 days;
+        uint256 maintenanceFeeAnnual = 100;
+        uint256 secondsInYear = 365 days;
+        uint256 maintenanceFeePerSecond18pt = (maintenanceFeeAnnual * 1e18) / 10_000 / secondsInYear;
+        uint256 expectedFee = (tvl18 * maintenanceFeePerSecond18pt * elapsed) / 1e18;
+
+        assertApproxEqAbs(fee, expectedFee, 1);
+    }
+
+    /// @notice Fuzz test for maintenance fee calculation
+    function testFuzzMaintenanceFee(uint256 tvl, uint256 elapsed) public {
+        vm.assume(tvl > MIN_DEPOSIT && tvl < 100_000_000e6);
+        vm.assume(elapsed > 0 && elapsed < 365 days * 10);
+
+        vm.prank(ORACLE);
+        tvlFeed.updateTvl(tvl);
+        uint256 lastClaim = block.timestamp;
+        skip(elapsed);
+        uint256 fee = vault.exposed_calcMaintenanceFee(lastClaim);
+
+        uint256 tvl18 = tvl * 1e12;
         uint256 maintenanceFeeAnnual = 100;
         uint256 secondsInYear = 365 days;
         uint256 maintenanceFeePerSecond18pt = (maintenanceFeeAnnual * 1e18) / 10_000 / secondsInYear;

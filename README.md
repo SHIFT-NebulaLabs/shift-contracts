@@ -40,6 +40,12 @@ Replace `<Filename>` and environment variables as needed for your use-case.
 forge build
 ```
 
+**📝 Format Contracts**
+```sh
+forge fmt
+```
+
+
 **🧹 Clean Build Artifacts**
 ```sh
 forge clean
