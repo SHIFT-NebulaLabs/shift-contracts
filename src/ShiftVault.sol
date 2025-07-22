@@ -246,7 +246,7 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
 
     /// @notice Send funds to resolver. Only executor.
     function sendFundsToResolver() external onlyExecutor nonReentrant notPaused {
-        uint256 liquidity = _calcResolverLiquidity();
+        uint256 liquidity = _calcResolverLiquidity(_calcBufferValue());
         baseToken.safeTransfer(msg.sender, liquidity);
     }
 
@@ -291,6 +291,14 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
     /// @notice Get total shares in previous withdrawal batch. Only executor.
     function getBatchWithdrawAmount() external view onlyExecutor returns (uint256) {
         return batchWithdrawStates[currentBatchId - 1].totalShares;
+    }
+
+    /// @notice Returns the current resolver liquidity and buffer amount available for withdrawal processing.
+    /// @return liquidityAmount Amount of base tokens available for resolver (excluding buffer and pending withdrawals).
+    /// @return bufferAmount Amount of base tokens held as buffer.
+    function getResolverData() external view returns (uint256 liquidityAmount, uint256 bufferAmount) {
+        bufferAmount = _calcBufferValue();
+        liquidityAmount = _calcResolverLiquidity(bufferAmount);
     }
 
     // =========================
@@ -358,30 +366,30 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
         return (tvl18pt * maintenanceFeePerSecond18pt * elapsed) / 1e18;
     }
 
-    function _calcBufferValue() internal view returns (uint256 bufferValue18pt, uint256 tvlValue18pt, uint8 tokenScaleFactor) {
+    /// @notice Calculates the buffer value based on the current TVL and buffer basis points.
+    /// @dev Uses normalized TVL and base token decimals to compute the buffer value.
+    ///      Returns 0 if bufferBps is zero, otherwise calculates the buffer as a proportion of TVL.
+    /// @return The buffer value to mint, adjusted for base token decimals.
+    function _calcBufferValue() internal view returns (uint256) {
         (uint256 tvl18pt, ) = _normalize(tvlFeed.getLastTvl().value, tvlFeed.decimals());
         (, uint8 baseTokenScaleFactor) = _normalize(1, baseToken.decimals()); // Only to retrieve missing decimals from base token
 
-        if (bufferBps == 0) return (0, tvl18pt, baseTokenScaleFactor); // No buffer, return TVL only
+        if (bufferBps == 0) return 0; // No buffer, return TVL only
 
         UD60x18 buffer = ud(tvl18pt).mul(ud(buffer18pt)).div(ud(1e18));
-        bufferValue18pt = buffer.unwrap(); // UD60x18 to uint256 (token decimals)
-        tvlValue18pt = tvl18pt;
-        tokenScaleFactor = baseTokenScaleFactor;
+        return baseTokenScaleFactor == 0 ? buffer.unwrap() : buffer.unwrap() / 10 ** baseTokenScaleFactor; // UD60x18 to uint256 (token decimals)
     }
 
-    function _calcResolverLiquidity() internal view returns (uint256) {
-        (uint256 bufferValue18pt, uint256 tvlValue18pt, uint8 tokenScaleFactor) = _calcBufferValue();
-        uint256 liquidity = 0;
-        if(tokenScaleFactor == 0){
-            liquidity = tvlValue18pt - bufferValue18pt - amountReadyForWithdraw;
-        }else{
-            uint256 withdraw18pt = amountReadyForWithdraw * 10 ** tokenScaleFactor;
-            liquidity = (tvlValue18pt - bufferValue18pt - withdraw18pt) / 10 ** tokenScaleFactor;
-        }
-        return liquidity > baseToken.balanceOf(address(this)) ? 0 : liquidity;
-    }
+    /// @notice Calculates the available liquidity for the resolver, excluding the buffer and withdrawable amounts.
+    /// @dev Returns zero if the calculated liquidity exceeds the contract's token balance.
+    /// @param _bufferAmount The amount to be reserved as a buffer and excluded from liquidity.
+    /// @return The amount of liquidity available for the resolver.
+    function _calcResolverLiquidity(uint256 _bufferAmount) internal view returns (uint256) {
+        uint256 balance = baseToken.balanceOf(address(this));
+        uint256 required = amountReadyForWithdraw + _bufferAmount;
 
+        return balance > required ? balance - required : 0;
+    }
 
     /// @notice Check if user's deposit request expired.
     /// @return True if expired, false otherwise.

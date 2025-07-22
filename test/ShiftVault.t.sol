@@ -34,7 +34,7 @@ contract ShiftVaultTest is Test {
         token = new MockERC20(6);
         tvlFeed = new ShiftTvlFeed(address(access));
         vault = new ShiftVaultHarness(
-            address(access), address(token), address(tvlFeed), FEE_COLLECTOR, MIN_DEPOSIT, 1_000_000_000, 1 days
+            address(access), address(token), address(tvlFeed), FEE_COLLECTOR, MIN_DEPOSIT, 1_000_000_000e6, 1 days
         );
         tvlFeed.initialize(address(vault));
         vm.prank(ADMIN);
@@ -189,33 +189,106 @@ contract ShiftVaultTest is Test {
         assertEq(tokens, expectedTokens);
     }
 
+    /// @notice Tests calculation of buffer value based on TVL (Total Value Locked).
+    function testCalcBufferValue() public {
+        // Set a fixed TVL
+        vm.prank(ORACLE);
+        tvlFeed.updateTvl(100_000_000e6);
+
+        // Set the buffer basis points to 100 (1%)
+        vm.prank(ADMIN);
+        vault.updateBufferBps(100);
+
+        // Calculate buffer value
+        uint256 bufferValue = vault.exposed_calcBufferValue();
+        assertEq(bufferValue, 1_000_000e6); // 1% of TVL as buffer
+    }
+
+    /// @notice Tests calculation of resolver liquidity based on TVL and buffer value.
+    function testCalcResolverLiquidity() public {
+        // Set up a deposit to establish TVL
+        _setupUser(USER, 100_000_000e6);
+        vault.deposit(100_000_000e6);
+        vm.stopPrank();
+
+        // Set a fixed TVL
+        vm.prank(ORACLE);
+        tvlFeed.updateTvl(100_000_000e6);
+
+        // Set the buffer basis points to 100 (1%)
+        vm.prank(ADMIN);
+        vault.updateBufferBps(100);
+
+        // Calculate buffer value
+        uint256 bufferValue = vault.exposed_calcBufferValue();
+        assertEq(bufferValue, 1_000_000e6); // 1% of TVL as buffer
+
+        // Calculate resolver liquidity
+        uint256 resolverLiquidity = vault.exposed_calcResolverLiquidity(bufferValue);
+        assertEq(resolverLiquidity, 99_000_000e6); // 100M - 1M buffer
+    }
+
     /// @notice Fuzz test for shares calculation from token amount
-    function testFuzzCalcShares(uint256 amount) public {
-        vm.assume(amount >= MIN_DEPOSIT && amount <= 1_000_000e6);
+    function testFuzzCalcShares(uint256 _amount, uint256 _tvl) public {
+        vm.assume(_amount >= MIN_DEPOSIT && _amount <= 1_000_000e6);
+        vm.assume(_tvl >= MIN_DEPOSIT && _tvl <= 200_000_000e6);
 
         address otherUser = address(0xBEEF);
-        _setupUser(otherUser, 10_000_000);
-        vault.deposit(10_000_000);
+        _setupUser(otherUser, _tvl);
+        vault.deposit(_tvl);
         vm.stopPrank();
 
         vm.prank(ORACLE);
-        tvlFeed.updateTvl(100_000_000); // Set a fixed TV
+        tvlFeed.updateTvl(_tvl); // Set a random TVL
 
         uint256 totalSupply = vault.totalSupply();
-        uint256 tvl = 100_000_000;
-        uint256 expectedShares = (amount * 1e12 * totalSupply) / (tvl * 1e12);
-        uint256 shares = vault.exposed_calcSharesFromToken(amount, 1);
+        uint256 expectedShares = (_amount * 1e12 * totalSupply) / (_tvl * 1e12);
+        uint256 shares = vault.exposed_calcSharesFromToken(_amount, 1);
 
-        assertEq(shares, expectedShares);
+        assertApproxEqAbs(shares, expectedShares, 1e9); //(0.0000000001 in 18 decimals) due to rounding errors on native solidity compare to UD60x18 math
     }
 
     /// @notice Fuzz test for token calculation from shares and custom rate
-    function testFuzzCalcToken(uint256 shares) public view {
-        vm.assume(shares >= 1e18 && shares <= 1_000_000_000e18);
+    function testFuzzCalcToken(uint256 _shares) public view {
+        vm.assume(_shares >= 1e18 && _shares <= 1_000_000_000e18);
         uint256 rate = 2e18;
-        uint256 tokensExpected = (shares * rate) / 1e18;
-        uint256 tokens = vault.exposed_calcTokenFromShares(shares, rate);
+        uint256 tokensExpected = (_shares * rate) / 1e18;
+        uint256 tokens = vault.exposed_calcTokenFromShares(_shares, rate);
         assertEq(tokens, tokensExpected);
+    }
+
+    /// @notice Fuzz test to verify the correct calculation of buffer value based on TVL (Total Value Locked).
+    function testFuzzCalcBufferValue(uint256 _tvl) public {
+        vm.assume(_tvl >= MIN_DEPOSIT && _tvl <= 1_000_000_000e6);
+        vm.prank(ORACLE);
+        tvlFeed.updateTvl(_tvl);
+
+        // Set buffer basis points to 100 (1%)
+        vm.prank(ADMIN);
+        vault.updateBufferBps(100);
+
+        uint256 bufferValue = vault.exposed_calcBufferValue();
+        assertEq(bufferValue, _tvl / 100); // 1% of TVL as buffer
+    }
+
+    /// @notice Fuzz test for resolver liquidity calculation
+    function testFuzzCalcResolverLiquidity(uint256 _tvl) public {
+        vm.assume(_tvl >= MIN_DEPOSIT && _tvl <= 200_000_000e6);
+
+        _setupUser(USER, _tvl);
+        vault.deposit(_tvl);
+        vm.stopPrank();
+
+        vm.prank(ORACLE);
+        tvlFeed.updateTvl(_tvl); // Set a random TVL
+
+        vm.prank(ADMIN);
+        vault.updateBufferBps(100);
+
+        uint256 bufferValue = vault.exposed_calcBufferValue();
+        uint256 resolverLiquidity = vault.exposed_calcResolverLiquidity(bufferValue);
+
+        assertEq(resolverLiquidity, _tvl - (_tvl * 100 / 10_000) - vault.amountReadyForWithdraw());
     }
 
     // --- Fee Calculation Tests ---
@@ -229,11 +302,11 @@ contract ShiftVaultTest is Test {
     }
 
     /// @notice Fuzz test for performance fee calculation
-    function testFuzzPerformanceFee(uint256 token) public view {
-        vm.assume(token >= MIN_DEPOSIT && token < 1_000_000e6);
-        (uint256 fee, uint256 net) = vault.exposed_calcPerformanceFee(token);
-        assertEq(fee, token / 100);
-        assertEq(net, token - fee);
+    function testFuzzPerformanceFee(uint256 _token) public view {
+        vm.assume(_token >= MIN_DEPOSIT && _token < 1_000_000e6);
+        (uint256 fee, uint256 net) = vault.exposed_calcPerformanceFee(_token);
+        assertEq(fee, _token / 100);
+        assertEq(net, _token - fee);
     }
 
     /// @notice Tests maintenance fee calculation over a day
@@ -252,27 +325,27 @@ contract ShiftVaultTest is Test {
         uint256 maintenanceFeePerSecond18pt = (maintenanceFeeAnnual * 1e18) / 10_000 / secondsInYear;
         uint256 expectedFee = (tvl18 * maintenanceFeePerSecond18pt * elapsed) / 1e18;
 
-        assertApproxEqAbs(fee, expectedFee, 1);
+        assertEq(fee, expectedFee);
     }
 
     /// @notice Fuzz test for maintenance fee calculation
-    function testFuzzMaintenanceFee(uint256 tvl, uint256 elapsed) public {
-        vm.assume(tvl > MIN_DEPOSIT && tvl < 100_000_000e6);
-        vm.assume(elapsed > 0 && elapsed < 365 days * 10);
+    function testFuzzMaintenanceFee(uint256 _tvl, uint256 _elapsed) public {
+        vm.assume(_tvl > MIN_DEPOSIT && _tvl < 100_000_000e6);
+        vm.assume(_elapsed > 0 && _elapsed < 365 days * 10);
 
         vm.prank(ORACLE);
-        tvlFeed.updateTvl(tvl);
+        tvlFeed.updateTvl(_tvl);
         uint256 lastClaim = block.timestamp;
-        skip(elapsed);
+        skip(_elapsed);
         uint256 fee = vault.exposed_calcMaintenanceFee(lastClaim);
 
-        uint256 tvl18 = tvl * 1e12;
+        uint256 tvl18 = _tvl * 1e12;
         uint256 maintenanceFeeAnnual = 100;
         uint256 secondsInYear = 365 days;
         uint256 maintenanceFeePerSecond18pt = (maintenanceFeeAnnual * 1e18) / 10_000 / secondsInYear;
-        uint256 expectedFee = (tvl18 * maintenanceFeePerSecond18pt * elapsed) / 1e18;
+        uint256 expectedFee = (tvl18 * maintenanceFeePerSecond18pt * _elapsed) / 1e18;
 
-        assertApproxEqAbs(fee, expectedFee, 1);
+        assertEq(fee, expectedFee);
     }
 
     // --- Revert/Negative Tests ---
