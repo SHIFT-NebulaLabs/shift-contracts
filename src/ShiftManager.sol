@@ -96,6 +96,7 @@ abstract contract ShiftManager is AccessModifier {
     function updatePerformanceFee(uint16 _feeBps) external onlyAdmin {
         require(paused, "ShiftManager: contract not paused");
         require(_feeBps > 0, "ShiftManager: zero performance fee");
+        require(_feeBps <= 10_000, "ShiftManager: performance fee exceeds 100%");
         performanceFeeBps = _feeBps;
         performanceFee18pt = _calc18ptFromBps(_feeBps);
     }
@@ -104,6 +105,7 @@ abstract contract ShiftManager is AccessModifier {
     /// @param _annualFeeBps New maintenance fee in basis points.
     function updateMaintenanceFee(uint16 _annualFeeBps) external onlyAdmin {
         require(_annualFeeBps > 0, "ShiftManager: zero maintenance fee");
+        require(_annualFeeBps <= 10_000, "ShiftManager: maintenance fee exceeds 100%");
         maintenanceFeeBpsAnnual = _annualFeeBps;
         maintenanceFeePerSecond18pt = _calc18ptFromBps(_annualFeeBps) / uint256(SECONDS_IN_YEAR);
     }
@@ -125,6 +127,7 @@ abstract contract ShiftManager is AccessModifier {
     }
 
     function updateBufferBps(uint16 _bufferBps) external onlyAdmin {
+        require(_bufferBps <= 10_000, "ShiftManager: buffer exceeds 100%");
         bufferBps = _bufferBps;
         buffer18pt = _bufferBps == 0 ? 0 : _calc18ptFromBps(_bufferBps);
     }

@@ -312,10 +312,11 @@ contract ShiftVaultTest is Test {
     /// @notice Tests maintenance fee calculation over a day
     function testMaintenanceFee() public {
         uint256 tvl = 100_000_000;
-        vm.prank(ORACLE);
-        tvlFeed.updateTvl(tvl);
         uint256 lastClaim = block.timestamp;
         skip(1 days);
+        vm.prank(ORACLE);
+        tvlFeed.updateTvl(tvl);
+
         uint256 fee = vault.exposed_calcMaintenanceFee(lastClaim);
 
         uint256 tvl18 = tvl * 1e12;
@@ -333,10 +334,11 @@ contract ShiftVaultTest is Test {
         vm.assume(_tvl > MIN_DEPOSIT && _tvl < 100_000_000e6);
         vm.assume(_elapsed > 0 && _elapsed < 365 days * 10);
 
-        vm.prank(ORACLE);
-        tvlFeed.updateTvl(_tvl);
         uint256 lastClaim = block.timestamp;
         skip(_elapsed);
+        vm.prank(ORACLE);
+        tvlFeed.updateTvl(_tvl);
+
         uint256 fee = vault.exposed_calcMaintenanceFee(lastClaim);
 
         uint256 tvl18 = _tvl * 1e12;

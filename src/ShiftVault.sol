@@ -8,7 +8,7 @@ import {UD60x18, ud} from "@prb/math/src/UD60x18.sol";
 import {IShiftTvlFeed} from "./interface/IShiftTvlFeed.sol";
 import {AccessModifier} from "./utils/AccessModifier.sol";
 import {ShiftManager} from "./ShiftManager.sol";
-import {VALIDITY_DURATION} from "./utils/Constants.sol";
+import {REQUEST_VALIDITY, FRESHNESS_VALIDITY} from "./utils/Constants.sol";
 
 /// @title ShiftVault
 /// @notice Manages liquidity and vault operations for the Shift protocol.
@@ -64,6 +64,7 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
 
         baseToken = ERC20(_tokenContract);
         tvlFeed = IShiftTvlFeed(_tvlFeedContract);
+        require(baseToken.decimals() <= 18, "ShiftVault: base token decimals > 18");
 
         currentBatchId = 1;
         lastMaintenanceFeeClaimedAt = block.timestamp;
@@ -73,10 +74,12 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
     function reqDeposit() external nonReentrant notPaused {
         require(isWhitelisted[msg.sender] || !whitelistEnabled, "ShiftVault: not whitelisted");
         DepositState storage state = depositStates[msg.sender];
+        if (_isExpired()) state.isPriceUpdated = false; // Reset if expired, to allow new request
+
         require(!state.isPriceUpdated, "ShiftVault: deposit request already exists");
         require(_isExpired(), "ShiftVault: deposit request still valid");
 
-        state.expirationTime = block.timestamp + uint256(VALIDITY_DURATION);
+        state.expirationTime = block.timestamp + uint256(REQUEST_VALIDITY);
         emit DepositRequested(msg.sender);
     }
 
@@ -194,7 +197,8 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
     function allowDeposit(address _user, uint256 _tvlIndex) external notPaused {
         require(msg.sender == address(tvlFeed), "ShiftVault: caller is not TVL feed");
         DepositState storage state = depositStates[_user];
-        if (state.isPriceUpdated || state.expirationTime <= block.timestamp) return;
+        require(!state.isPriceUpdated, "ShiftVault: deposit already allowed");
+        require(state.expirationTime > block.timestamp, "ShiftVault: deposit request expired");
         state.isPriceUpdated = true;
         state.requestIndex = _tvlIndex;
         emit DepositAllowed(_user, state.expirationTime);
@@ -361,7 +365,9 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
     /// @param _lastClaimTimestamp Last claim timestamp.
     /// @return Maintenance fee to mint.
     function _calcMaintenanceFee(uint256 _lastClaimTimestamp) internal view returns (uint256) {
-        (uint256 tvl18pt,) = _normalize(tvlFeed.getLastTvl().value, tvlFeed.decimals());
+        IShiftTvlFeed.TvlData memory lastTvl = tvlFeed.getLastTvl();
+        require(block.timestamp - lastTvl.timestamp < FRESHNESS_VALIDITY, "ShiftVault: stale TVL data");
+        (uint256 tvl18pt,) = _normalize(lastTvl.value, tvlFeed.decimals());
         uint256 elapsed = block.timestamp - _lastClaimTimestamp;
         return (tvl18pt * maintenanceFeePerSecond18pt * elapsed) / 1e18;
     }
@@ -371,7 +377,9 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
     ///      Returns 0 if bufferBps is zero, otherwise calculates the buffer as a proportion of TVL.
     /// @return The buffer value to mint, adjusted for base token decimals.
     function _calcBufferValue() internal view returns (uint256) {
-        (uint256 tvl18pt, ) = _normalize(tvlFeed.getLastTvl().value, tvlFeed.decimals());
+        IShiftTvlFeed.TvlData memory lastTvl = tvlFeed.getLastTvl();
+        require(block.timestamp - lastTvl.timestamp < FRESHNESS_VALIDITY, "ShiftVault: stale TVL data");
+        (uint256 tvl18pt,) = _normalize(lastTvl.value, tvlFeed.decimals());
         (, uint8 baseTokenScaleFactor) = _normalize(1, baseToken.decimals()); // Only to retrieve missing decimals from base token
 
         if (bufferBps == 0) return 0; // No buffer, return TVL only
