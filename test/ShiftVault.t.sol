@@ -249,11 +249,11 @@ contract ShiftVaultTest is Test {
     }
 
     /// @notice Fuzz test for token calculation from shares and custom rate
-    function testFuzzCalcToken(uint256 _shares) public view {
+    function testFuzzCalcToken(uint256 _shares, uint256 _rate) public view {
         vm.assume(_shares >= 1e18 && _shares <= 1_000_000_000e18);
-        uint256 rate = 2e18;
-        uint256 tokensExpected = (_shares * rate) / 1e18;
-        uint256 tokens = vault.exposed_calcTokenFromShares(_shares, rate);
+        vm.assume(_rate > 0 && _rate <= 1_000_000_000e18);
+        uint256 tokensExpected = (_shares * _rate) / 1e18;
+        uint256 tokens = vault.exposed_calcTokenFromShares(_shares, _rate);
         assertEq(tokens, tokensExpected);
     }
 
@@ -303,7 +303,7 @@ contract ShiftVaultTest is Test {
 
     /// @notice Fuzz test for performance fee calculation
     function testFuzzPerformanceFee(uint256 _token) public view {
-        vm.assume(_token >= MIN_DEPOSIT && _token < 1_000_000e6);
+        vm.assume(_token >= MIN_DEPOSIT && _token < 10_000_000e6);
         (uint256 fee, uint256 net) = vault.exposed_calcPerformanceFee(_token);
         assertEq(fee, _token / 100);
         assertEq(net, _token - fee);

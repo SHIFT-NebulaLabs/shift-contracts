@@ -66,6 +66,7 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
         tvlFeed = IShiftTvlFeed(_tvlFeedContract);
         require(baseToken.decimals() <= 18, "ShiftVault: base token decimals > 18");
 
+        batchWithdrawStates[currentBatchId].rate = 1;
         currentBatchId = 1;
         lastMaintenanceFeeClaimedAt = block.timestamp;
     }
@@ -87,21 +88,30 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
     /// @param _tokenAmount Base token amount to deposit.
     function deposit(uint256 _tokenAmount) external nonReentrant notPaused {
         require(_tokenAmount >= minDepositAmount, "ShiftVault: deposit below minimum");
-        require(tvlFeed.getLastTvl().value + _tokenAmount <= maxTvl, "ShiftVault: exceeds max TVL");
         DepositState storage state = depositStates[msg.sender];
         require(state.isPriceUpdated && !_isExpired(), "ShiftVault: no valid deposit request");
 
         state.isPriceUpdated = false; // Reset after deposit
+        state.expirationTime = 0; // Reset expiration time
+
+        // Handle fee-on-transfer tokens
+        uint256 balanceBefore = baseToken.balanceOf(address(this));
         baseToken.safeTransferFrom(msg.sender, address(this), _tokenAmount);
+        uint256 actualAmount = baseToken.balanceOf(address(this)) - balanceBefore;
+
+        (uint256 tvl18pt,) = _normalize(tvlFeed.getLastTvl().value, tvlFeed.decimals());
+        (uint256 maxTvl18pt,) = _normalize(maxTvl, tvlFeed.decimals());
+        (uint256 baseToken18pt,) = _normalize(actualAmount, baseToken.decimals());
+        require(tvl18pt + baseToken18pt <= maxTvl18pt, "ShiftVault: exceeds max TVL");
 
         uint256 shares;
         if (tvlFeed.getLastTvl().value == 0 || totalSupply() == 0) {
             // First deposit: 1:1 mapping to 18 decimals
-            (uint256 baseToken18Decimals,) = _normalize(_tokenAmount, baseToken.decimals());
-            shares = baseToken18Decimals;
+            shares = baseToken18pt;
         } else {
-            shares = _calcSharesFromToken(_tokenAmount, state.requestIndex);
+            shares = _calcSharesFromToken(actualAmount, state.requestIndex);
         }
+        require(shares > 0, "ShiftVault: zero shares calculated");
         _mint(msg.sender, shares);
 
         if (balanceOf(msg.sender) == shares) {
@@ -109,7 +119,7 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
                 ++activeUsers;
             }
         }
-        emit Deposited(msg.sender, _tokenAmount);
+        emit Deposited(msg.sender, actualAmount);
     }
 
     /// @notice Request withdrawal of LP shares. Only one active request per user.
@@ -173,15 +183,10 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
     function cancelWithdraw() external nonReentrant {
         WithdrawState storage userState = userWithdrawStates[msg.sender];
         require(userState.sharesAmount > 0, "ShiftVault: no withdrawal request to cancel");
-
-        BatchState storage batchState = batchWithdrawStates[userState.batchId];
-
-        // Check if batch is still pending
-        if (currentBatchId != userState.batchId) {
-            require(batchState.rate != 0, "ShiftVault: cannot cancel, withdrawal is processing");
-            amountReadyForWithdraw -= userState.sharesAmount;
-        }
+        require(currentBatchId == userState.batchId, "ShiftVault: cannot cancel, batch already processed");
+        
         // Update batch state before resetting user state
+        BatchState storage batchState = batchWithdrawStates[userState.batchId];
         batchState.totalShares -= userState.sharesAmount;
         // Transfer shares back to user
         _transfer(address(this), msg.sender, userState.sharesAmount);
@@ -211,19 +216,18 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
         require(nowTs > lastClaimed, "ShiftVault: already claimed for this period");
 
         uint256 feeAmount = _calcMaintenanceFee(lastClaimed);
+        lastMaintenanceFeeClaimedAt = nowTs;
         if (feeAmount == 0) return;
 
-        lastMaintenanceFeeClaimedAt = nowTs;
         _mint(feeCollector, feeAmount);
     }
 
     /// @notice Process current withdrawal batch. Only executor.
     function processWithdraw() external onlyExecutor notPaused {
-        BatchState storage batchState = batchWithdrawStates[currentBatchId];
-        require(batchState.rate == 0, "ShiftVault: batch already resolved");
+        require(batchWithdrawStates[currentBatchId - 1].rate != 0, "ShiftVault: previous batch not resolved");
 
         // Move to next batch only if shares to process
-        if (batchState.totalShares > 0) {
+        if (batchWithdrawStates[currentBatchId].totalShares > 0) {
             ++currentBatchId;
         }
     }
@@ -238,15 +242,15 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
         BatchState storage batchState = batchWithdrawStates[batchId];
         require(batchState.rate == 0, "ShiftVault: batch already resolved");
 
-        uint256 totalShares = batchState.totalShares;
-        if (totalShares > 0) {
-            amountReadyForWithdraw += totalShares;
-            batchState.rate = _rate;
-            if (_tokenAmount > 0) {
-                baseToken.safeTransferFrom(msg.sender, address(this), _tokenAmount);
-            }
-        }
+        uint256 requiredTokens = _calcTokenFromShares(batchState.totalShares, _rate);
+        require(_tokenAmount >= requiredTokens, "ShiftVault: insufficient tokens for batch");
+
+        amountReadyForWithdraw += batchState.totalShares;
+        batchState.rate = _rate;
+        baseToken.safeTransferFrom(msg.sender, address(this), _tokenAmount);
     }
+
+    //Resolver need to view current batch shares
 
     /// @notice Send funds to resolver. Only executor.
     function sendFundsToResolver() external onlyExecutor nonReentrant notPaused {
@@ -317,8 +321,7 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
         (uint256 baseToken18pt,) = _normalize(_tokenAmount, baseToken.decimals());
         (uint256 tvl18pt,) = _normalize(tvlFeed.getTvlEntry(_tvlIndex).value, tvlFeed.decimals());
 
-        UD60x18 ratio = ud(baseToken18pt).div(ud(tvl18pt));
-        UD60x18 shares = ratio.mul(ud(totalSupply()));
+        UD60x18 shares = ud(baseToken18pt).mul(ud(totalSupply())).div(ud(tvl18pt));
         return shares.unwrap(); // UD60x18 to uint256 (18 decimals)
     }
 
@@ -350,8 +353,8 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
     /// @return userAmount User amount after fee.
     function _calcPerformanceFee(uint256 _tokenAmount) internal view returns (uint256 feeAmount, uint256 userAmount) {
         (uint256 baseToken18pt, uint8 baseTokenScaleFactor) = _normalize(_tokenAmount, baseToken.decimals());
-        UD60x18 fee = ud(baseToken18pt).mul(ud(performanceFee18pt));
-        uint256 feeRaw = fee.unwrap();
+        //Round Ceilings to avoid bypass with micro-amounts
+        uint256 feeRaw = (baseToken18pt * performanceFee18pt + 1e18 - 1) / 1e18;
         if (baseTokenScaleFactor > 0) {
             feeAmount = feeRaw / 10 ** baseTokenScaleFactor;
             userAmount = _tokenAmount - feeAmount;

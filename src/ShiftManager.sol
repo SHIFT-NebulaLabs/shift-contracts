@@ -119,6 +119,7 @@ abstract contract ShiftManager is AccessModifier {
 
     /// @notice Update maximum total value locked (TVL).
     /// @dev This function will be overridden by child contracts <ShiftVault>.
+    /// @dev It is important to ensure that the new TVL cap have the same decimal precision as the tvlFeed.
     /// @param _amount New TVL cap.
     function updateMaxTvl(uint256 _amount) public virtual onlyAdmin {
         _validateDepositAndTvl(minDepositAmount, _amount);
