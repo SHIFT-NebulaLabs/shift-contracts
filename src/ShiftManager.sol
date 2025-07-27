@@ -69,11 +69,13 @@ abstract contract ShiftManager is AccessModifier {
 
     /// @notice Whitelist management or toggle whitelist enabled.
     /// @param _user Address to whitelist/unwhitelist, or zero address to toggle whitelist.
-    function manageWhitelist(address _user) external onlyAdmin {
-        if (_user == address(0)) {
+    function manageWhitelist(address[] calldata _user) external onlyAdmin {
+        if (_user[0] == address(0)) {
             whitelistEnabled = !whitelistEnabled;
         } else {
-            isWhitelisted[_user] = !isWhitelisted[_user];
+            for (uint256 i = 0; i < _user.length; i++) {
+                isWhitelisted[_user[i]] = !isWhitelisted[_user[i]];
+            }
         }
     }
 
@@ -111,7 +113,7 @@ abstract contract ShiftManager is AccessModifier {
     }
 
     /// @notice Update minimum deposit amount.
-    /// @param _amount New minimum deposit.
+    /// @param _amount New minimum deposit, token precision.
     function updateMinDeposit(uint256 _amount) public onlyAdmin {
         _validateDepositAndTvl(_amount, maxTvl);
         minDepositAmount = _amount;
@@ -141,8 +143,8 @@ abstract contract ShiftManager is AccessModifier {
     }
 
     /// @notice Validates deposit and TVL constraints.
-    /// @param _minDeposit Il nuovo deposito minimo.
-    /// @param _maxTvl Il nuovo TVL massimo.
+    /// @param _minDeposit The new minimum deposit.
+    /// @param _maxTvl The new maximum TVL.
     function _validateDepositAndTvl(uint256 _minDeposit, uint256 _maxTvl) internal pure {
         require(_minDeposit > 0, "ShiftManager: zero min deposit");
         require(_maxTvl > 0, "ShiftManager: zero max TVL");
