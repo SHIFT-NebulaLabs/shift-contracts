@@ -9,5 +9,5 @@ pragma solidity ^0.8.28;
  */
 
 uint8 constant REQUEST_VALIDITY = 120 seconds;
-uint32 constant FRESHNESS_VALIDITY = 1 days;
+uint32 constant FRESHNESS_VALIDITY = 90 minutes;
 uint32 constant SECONDS_IN_YEAR = 365 days;
