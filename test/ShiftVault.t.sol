@@ -47,9 +47,14 @@ contract ShiftVaultTest is Test {
 
     /// @dev Helper to whitelist a user, fund them, and approve the vault
     function _setupUser(address user, uint256 amount) internal {
-        vm.prank(ADMIN);
-        vault.manageWhitelist(user);
+        vm.startPrank(ADMIN);
+        address[] memory users = new address[](1);
+        users[0] = user;
+
+        vault.manageWhitelist(users);
         deal(address(token), user, amount);
+        vm.stopPrank();
+
         vm.startPrank(user);
         vault.reqDeposit();
         vm.stopPrank();
@@ -288,7 +293,7 @@ contract ShiftVaultTest is Test {
         uint256 bufferValue = vault.exposed_calcBufferValue();
         uint256 resolverLiquidity = vault.exposed_calcResolverLiquidity(bufferValue);
 
-        assertEq(resolverLiquidity, _tvl - (_tvl * 100 / 10_000) - vault.amountReadyForWithdraw());
+        assertEq(resolverLiquidity, _tvl - (_tvl * 100 / 10_000) - vault.availableForWithdraw());
     }
 
     // --- Fee Calculation Tests ---
@@ -299,14 +304,6 @@ contract ShiftVaultTest is Test {
         (uint256 fee, uint256 net) = vault.exposed_calcPerformanceFee(gross);
         assertEq(fee, gross / 100);
         assertEq(net, gross - fee);
-    }
-
-    /// @notice Fuzz test for performance fee calculation
-    function testFuzzPerformanceFee(uint256 _token) public view {
-        vm.assume(_token >= MIN_DEPOSIT && _token < 10_000_000e6);
-        (uint256 fee, uint256 net) = vault.exposed_calcPerformanceFee(_token);
-        assertEq(fee, _token / 100);
-        assertEq(net, _token - fee);
     }
 
     /// @notice Tests maintenance fee calculation over a day
@@ -327,6 +324,15 @@ contract ShiftVaultTest is Test {
         uint256 expectedFee = (tvl18 * maintenanceFeePerSecond18pt * elapsed) / 1e18;
 
         assertEq(fee, expectedFee);
+    }
+
+
+    /// @notice Fuzz test for performance fee calculation
+    function testFuzzPerformanceFee(uint256 _token) public view {
+        vm.assume(_token >= MIN_DEPOSIT && _token < 10_000_000e6);
+        (uint256 fee, uint256 net) = vault.exposed_calcPerformanceFee(_token);
+        assertEq(fee, _token / 100);
+        assertEq(net, _token - fee);
     }
 
     /// @notice Fuzz test for maintenance fee calculation
@@ -361,7 +367,10 @@ contract ShiftVaultTest is Test {
     /// @notice Tests that deposit below minimum reverts
     function testDepositBelowMinReverts() public {
         vm.prank(ADMIN);
-        vault.manageWhitelist(USER);
+
+        address[] memory users = new address[](1);
+        users[0] = USER;
+        vault.manageWhitelist(users);
         deal(address(token), USER, MIN_DEPOSIT - 1);
         vm.startPrank(USER);
         vault.reqDeposit();
@@ -387,7 +396,10 @@ contract ShiftVaultTest is Test {
     /// @notice Tests that withdraw request without shares reverts
     function testWithdrawWithoutSharesReverts() public {
         vm.prank(ADMIN);
-        vault.manageWhitelist(USER);
+
+        address[] memory users = new address[](1);
+        users[0] = USER;
+        vault.manageWhitelist(users);
         deal(address(token), USER, INITIAL_BALANCE);
         vm.startPrank(USER);
         vm.expectRevert("ShiftVault: insufficient shares");
