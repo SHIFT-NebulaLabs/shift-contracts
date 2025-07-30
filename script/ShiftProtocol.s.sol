@@ -7,7 +7,7 @@ import "../src/ShiftAccessControl.sol";
 import "../src/ShiftTvlFeed.sol";
 import "../src/mocks/TestToken.sol";
 
-contract DeployShiftProtocol_Test is Script {
+contract DeployShiftProtocol_Testnet is Script {
     function run() external {
         vm.startBroadcast();
 
@@ -39,10 +39,38 @@ contract DeployShiftProtocol_Test is Script {
 
 contract DeployShiftProtocol_Mainnet is Script {
     function run() external {
+        address admin = vm.envAddress("ADMIN_EOA");
+
         vm.startBroadcast();
 
-        address admin = vm.envAddress("ADMIN_EOA");
         address accessControl = address(new ShiftAccessControl(admin));
+
+        address tvlFeed = address(new ShiftTvlFeed(accessControl));
+
+        address tokenContract = vm.envAddress("TOKEN_CONTRACT");
+        address feeCollector = vm.envAddress("FEE_COLLECTOR_EOA");
+        uint256 minTokenDeposit = vm.envUint("MIN_TOKEN_DEPOSIT");
+        uint256 maxTvlAllowance = vm.envUint("MAX_TVL_ALLOWANCE");
+        uint32 withdrawalDelay = uint32(vm.envUint("WITHDRAWAL_DELAY"));
+
+        new ShiftVault(
+            accessControl, tokenContract, tvlFeed, feeCollector, minTokenDeposit, maxTvlAllowance, withdrawalDelay
+        );
+
+        // IMPORTANT: The ShiftAccessControl and ShiftTvlFeed contracts must be deployed before the ShiftVault contract.
+        // This is because the ShiftVault constructor requires the addresses of these contracts.
+        // IMPORTANT: ShiftTvlFeed must be initialized with the Vault address after deployment. <initialize()>
+        // IMPORTANT: ShiftVault must set performance and maintenance fees after deployment. Then unpaused <updateMaintenanceFee()> <updatePerformanceFee()> <releasePaused()>
+
+        vm.stopBroadcast();
+    }
+}
+
+contract DeployShiftVault_Mainnet is Script {
+    function run() external {
+        address accessControl = vm.envAddress("ACCESS_CONTROL_CONTRACT");
+
+        vm.startBroadcast();
 
         address tvlFeed = address(new ShiftTvlFeed(accessControl));
 
