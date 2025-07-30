@@ -2,6 +2,7 @@
 pragma solidity ^0.8.28;
 
 import "../../src/ShiftVault.sol";
+import {IShiftTvlFeed} from "../../src/interface/IShiftTvlFeed.sol";
 
 contract ShiftVaultHarness is ShiftVault {
     constructor(
@@ -26,12 +27,12 @@ contract ShiftVaultHarness is ShiftVault {
         return _normalize(_a, _d);
     }
 
-    function exposed_calcPerformanceFee(uint256 _a) external view returns (uint256, uint256) {
+    function exposed_calcPerformanceFee(uint256 _a) external view returns (uint256) {
         return _calcPerformanceFee(_a);
     }
 
-    function exposed_calcMaintenanceFee(uint256 _t) external view returns (uint256) {
-        return _calcMaintenanceFee(_t);
+    function exposed_calcMaintenanceFee(uint256 _t, uint256 _p) external view returns (uint256) {
+        return _calcMaintenanceFee(_t, _p);
     }
 
     function exposed_calcBufferValue() external view returns (uint256) {
@@ -46,8 +47,20 @@ contract ShiftVaultHarness is ShiftVault {
         return _isExpired();
     }
 
+    function exposed_allTimeDeposited() external view returns (uint256) {
+        return allTimeDeposited;
+    }   
+
+    function exposed_allTimeWithdrawn() external view returns (uint256) {
+        return allTimeWithdrawn;
+    }
+
+    function exposed_snapshotTvl18pt() external view returns (uint256) {
+        return snapshotTvl18pt;
+    }
+
     function exposed_depositState(address _user) external view returns (bool, uint256) {
-        DepositState storage s = depositStates[_user];
+        DepositState storage s = userDepositStates[_user];
         return (s.isPriceUpdated, s.expirationTime);
     }
 

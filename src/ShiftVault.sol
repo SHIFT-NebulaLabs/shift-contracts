@@ -23,7 +23,7 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
     uint256 public availableForWithdraw;
     uint256 internal allTimeDeposited;
     uint256 internal allTimeWithdrawn;
-    uint256 internal snapshotTvl;
+    uint256 internal snapshotTvl18pt;
     uint256 internal lastMaintenanceFeeClaimedAt;
     uint256 internal currentBatchId;
 
@@ -240,7 +240,7 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
         require(feeAmount > 0, "ShiftVault: no performance fee to claim");
         uint256 share = _calcShare(feeAmount, tvl18pt);
 
-        snapshotTvl = lastTvl.value;
+        snapshotTvl18pt = tvl18pt;
         _mint(feeCollector, share);
     }
 
@@ -381,7 +381,7 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
         (uint256 allTimeWithdrawn18pt,) = _normalize(allTimeWithdrawn, baseToken.decimals());
 
         int256 gain18pt =
-            int256(_tvl18pt) - int256(snapshotTvl) + int256(allTimeWithdrawn18pt) - int256(allTimeDeposited18pt);
+            int256(_tvl18pt) - int256(snapshotTvl18pt) + int256(allTimeWithdrawn18pt) - int256(allTimeDeposited18pt);
         UD60x18 feeAmount = ud(uint256(gain18pt)).mul(ud(performanceFee18pt));
         return feeAmount.unwrap();
     }

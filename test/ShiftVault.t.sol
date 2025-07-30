@@ -38,9 +38,9 @@ contract ShiftVaultTest is Test {
         );
         tvlFeed.initialize(address(vault));
         vm.prank(ADMIN);
-        vault.updatePerformanceFee(100);
+        vault.updatePerformanceFee(2000);
         vm.prank(ADMIN);
-        vault.updateMaintenanceFee(100);
+        vault.updateMaintenanceFee(200);
         vm.prank(ADMIN);
         vault.releasePause();
     }
@@ -300,59 +300,83 @@ contract ShiftVaultTest is Test {
 
     /// @notice Tests performance fee calculation
     function testPerformanceFee() public view {
-        uint256 gross = 10_000_000;
-        (uint256 fee, uint256 net) = vault.exposed_calcPerformanceFee(gross);
-        assertEq(fee, gross / 100);
-        assertEq(net, gross - fee);
+        uint256 tvl = 100_000_000e6;
+        uint8 decimals = tvlFeed.decimals();
+        (uint256 tvl18pt, ) = vault.exposed_normalize(tvl, decimals);
+
+        uint256 fee = vault.exposed_calcPerformanceFee(tvl18pt);
+
+        uint256 perfFeeBps = vault.performanceFeeBps();
+        uint256 perfFeeRate = (perfFeeBps * 1e18) / 10_000;
+
+        int256 gain = int256(tvl18pt)
+            - int256(vault.exposed_snapshotTvl18pt())
+            + int256(vault.exposed_allTimeWithdrawn())
+            - int256(vault.exposed_allTimeDeposited());
+
+        uint256 expectedFee = gain > 0 ? (uint256(gain) * perfFeeRate) / 1e18 : 0;
+        assertEq(fee, expectedFee);
     }
 
     /// @notice Tests maintenance fee calculation over a day
     function testMaintenanceFee() public {
-        uint256 tvl = 100_000_000;
+        uint256 tvl = 100_000_000e6;
         uint256 lastClaim = block.timestamp;
         skip(1 days);
         vm.prank(ORACLE);
-        tvlFeed.updateTvl(tvl);
 
-        uint256 fee = vault.exposed_calcMaintenanceFee(lastClaim);
+        uint8 decimals = tvlFeed.decimals();
+        (uint256 tvl18pt, )= vault.exposed_normalize(tvl, decimals);
 
-        uint256 tvl18 = tvl * 1e12;
+        uint256 fee = vault.exposed_calcMaintenanceFee(lastClaim, tvl18pt);
+
         uint256 elapsed = 1 days;
-        uint256 maintenanceFeeAnnual = 100;
+        uint256 maintenanceFeeAnnual = vault.maintenanceFeeBpsAnnual();
         uint256 secondsInYear = 365 days;
         uint256 maintenanceFeePerSecond18pt = (maintenanceFeeAnnual * 1e18) / 10_000 / secondsInYear;
-        uint256 expectedFee = (tvl18 * maintenanceFeePerSecond18pt * elapsed) / 1e18;
-
+        uint256 expectedFee = (tvl18pt * maintenanceFeePerSecond18pt * elapsed) / 1e18;
         assertEq(fee, expectedFee);
     }
 
-
     /// @notice Fuzz test for performance fee calculation
-    function testFuzzPerformanceFee(uint256 _token) public view {
-        vm.assume(_token >= MIN_DEPOSIT && _token < 10_000_000e6);
-        (uint256 fee, uint256 net) = vault.exposed_calcPerformanceFee(_token);
-        assertEq(fee, _token / 100);
-        assertEq(net, _token - fee);
+    function testFuzzPerformanceFee(uint256 _tvl) public view {
+        vm.assume(_tvl >= MIN_DEPOSIT && _tvl < 1_000_000_000e6);
+        uint8 decimals = tvlFeed.decimals();
+        (uint256 tvl18pt, ) = vault.exposed_normalize(_tvl, decimals);
+
+        uint256 fee = vault.exposed_calcPerformanceFee(tvl18pt);
+
+        uint256 perfFeeBps = vault.performanceFeeBps();
+        uint256 perfFeeRate = (perfFeeBps * 1e18) / 10_000;
+
+        int256 gain = int256(tvl18pt)
+            - int256(vault.exposed_snapshotTvl18pt())
+            + int256(vault.exposed_allTimeWithdrawn())
+            - int256(vault.exposed_allTimeDeposited());
+
+        uint256 expectedFee = gain > 0 ? (uint256(gain) * perfFeeRate) / 1e18 : 0;
+        assertGt(fee, 0);
+        assertEq(fee, expectedFee);
     }
 
     /// @notice Fuzz test for maintenance fee calculation
     function testFuzzMaintenanceFee(uint256 _tvl, uint256 _elapsed) public {
-        vm.assume(_tvl > MIN_DEPOSIT && _tvl < 100_000_000e6);
-        vm.assume(_elapsed > 0 && _elapsed < 365 days * 10);
+        vm.assume(_tvl > MIN_DEPOSIT && _tvl < 1_000_000_000e6);
+        vm.assume(_elapsed > 0 && _elapsed < 365 days);
 
         uint256 lastClaim = block.timestamp;
         skip(_elapsed);
-        vm.prank(ORACLE);
-        tvlFeed.updateTvl(_tvl);
+        uint8 decimals = tvlFeed.decimals();
+        (uint256 tvl18pt, )= vault.exposed_normalize(_tvl, decimals);
 
-        uint256 fee = vault.exposed_calcMaintenanceFee(lastClaim);
+        uint256 fee = vault.exposed_calcMaintenanceFee(lastClaim, tvl18pt);
 
-        uint256 tvl18 = _tvl * 1e12;
-        uint256 maintenanceFeeAnnual = 100;
+        uint256 maintenanceFeeAnnual = vault.maintenanceFeeBpsAnnual();
         uint256 secondsInYear = 365 days;
         uint256 maintenanceFeePerSecond18pt = (maintenanceFeeAnnual * 1e18) / 10_000 / secondsInYear;
-        uint256 expectedFee = (tvl18 * maintenanceFeePerSecond18pt * _elapsed) / 1e18;
+        uint256 expectedFee = (tvl18pt * maintenanceFeePerSecond18pt * _elapsed) / 1e18;
 
+        assertGt(fee, 0);
         assertEq(fee, expectedFee);
     }
 
