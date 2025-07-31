@@ -31,7 +31,7 @@ contract ShiftTvlFeed is AccessModifier {
 
     /// @notice Initialize contract with ShiftVault address.
     /// @param _shiftVaultContract Address of ShiftVault contract.
-    function initialize(address _shiftVaultContract) external {
+    function initialize(address _shiftVaultContract) external onlyAdmin {
         require(!init, "ShiftTvlFeed: already initialized");
         require(_shiftVaultContract != address(0), "ShiftTvlFeed: zero vault address");
         shiftVault = IShiftVault(_shiftVaultContract);

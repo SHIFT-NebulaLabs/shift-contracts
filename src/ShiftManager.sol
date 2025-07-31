@@ -55,6 +55,26 @@ abstract contract ShiftManager is AccessModifier {
         timelock = _timeLock;
     }
 
+
+    /// @notice Update maximum total value locked (TVL).
+    /// @dev This function will be overridden by child contracts <ShiftVault>.
+    /// @dev It is important to ensure that the new TVL cap have the same decimal precision as the tvlFeed.
+    /// @param _amount New TVL cap.
+    function updateMaxTvl(uint256 _amount) public virtual onlyAdmin {
+        _validateDepositAndTvl(minDepositAmount, _amount);
+        maxTvl = _amount;
+        emit MaxTvlUpdated(block.timestamp, _amount);
+    }
+
+    /// @notice Update annual maintenance fee (basis points).
+    /// @param _annualFeeBps New maintenance fee in basis points.
+    function updateMaintenanceFee(uint16 _annualFeeBps) public virtual onlyAdmin {
+        require(_annualFeeBps > 0, "ShiftManager: zero maintenance fee");
+        require(_annualFeeBps <= 10_000, "ShiftManager: maintenance fee exceeds 100%");
+        maintenanceFeeBpsAnnual = _annualFeeBps;
+        maintenanceFeePerSecond18pt = _calc18ptFromBps(_annualFeeBps) / uint256(SECONDS_IN_YEAR);
+    }
+
     /// @notice Emergency pause.
     function emergencyPause() external onlyAdmin {
         paused = true;
@@ -62,8 +82,6 @@ abstract contract ShiftManager is AccessModifier {
 
     /// @notice Unpause contract, requires all fees set.
     function releasePause() external onlyAdmin {
-        require(performanceFeeBps > 0, "ShiftManager: performance fee not set");
-        require(maintenanceFeeBpsAnnual > 0, "ShiftManager: maintenance fee not set");
         paused = false;
     }
 
@@ -103,30 +121,11 @@ abstract contract ShiftManager is AccessModifier {
         performanceFee18pt = _calc18ptFromBps(_feeBps);
     }
 
-    /// @notice Update annual maintenance fee (basis points).
-    /// @param _annualFeeBps New maintenance fee in basis points.
-    function updateMaintenanceFee(uint16 _annualFeeBps) external onlyAdmin {
-        require(_annualFeeBps > 0, "ShiftManager: zero maintenance fee");
-        require(_annualFeeBps <= 10_000, "ShiftManager: maintenance fee exceeds 100%");
-        maintenanceFeeBpsAnnual = _annualFeeBps;
-        maintenanceFeePerSecond18pt = _calc18ptFromBps(_annualFeeBps) / uint256(SECONDS_IN_YEAR);
-    }
-
     /// @notice Update minimum deposit amount.
     /// @param _amount New minimum deposit, token precision.
-    function updateMinDeposit(uint256 _amount) public onlyAdmin {
+    function updateMinDeposit(uint256 _amount) external onlyAdmin {
         _validateDepositAndTvl(_amount, maxTvl);
         minDepositAmount = _amount;
-    }
-
-    /// @notice Update maximum total value locked (TVL).
-    /// @dev This function will be overridden by child contracts <ShiftVault>.
-    /// @dev It is important to ensure that the new TVL cap have the same decimal precision as the tvlFeed.
-    /// @param _amount New TVL cap.
-    function updateMaxTvl(uint256 _amount) public virtual onlyAdmin {
-        _validateDepositAndTvl(minDepositAmount, _amount);
-        maxTvl = _amount;
-        emit MaxTvlUpdated(block.timestamp, _amount);
     }
 
     function updateBufferBps(uint16 _bufferBps) external onlyAdmin {

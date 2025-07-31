@@ -19,6 +19,9 @@ contract ShiftVaultTest is Test {
     address constant USER = address(4);
     address constant ORACLE = address(5);
 
+    string constant SHARE_NAME = "Shift LP";
+    string constant SHARE_SYMBOL = "SLP";
+
     bytes32 constant EXECUTOR_ROLE = keccak256("EXECUTOR_ROLE");
     bytes32 constant ORACLE_ROLE = keccak256("ORACLE_ROLE");
 
@@ -34,15 +37,14 @@ contract ShiftVaultTest is Test {
         token = new MockERC20(6);
         tvlFeed = new ShiftTvlFeed(address(access));
         vault = new ShiftVaultHarness(
-            address(access), address(token), address(tvlFeed), FEE_COLLECTOR, MIN_DEPOSIT, 1_000_000_000e6, 1 days
+            address(access), address(token), address(tvlFeed), FEE_COLLECTOR, SHARE_NAME, SHARE_SYMBOL, MIN_DEPOSIT, 1_000_000_000e6, 1 days
         );
+        vm.startPrank(ADMIN);
         tvlFeed.initialize(address(vault));
-        vm.prank(ADMIN);
         vault.updatePerformanceFee(2000);
-        vm.prank(ADMIN);
         vault.updateMaintenanceFee(200);
-        vm.prank(ADMIN);
         vault.releasePause();
+        vm.stopPrank();
     }
 
     /// @dev Helper to whitelist a user, fund them, and approve the vault
@@ -78,7 +80,7 @@ contract ShiftVaultTest is Test {
         vm.stopPrank();
 
         vm.startPrank(EXECUTOR);
-        vault.sendFundsToResolver();
+        vault.retrieveLiquidity();
         vault.processWithdraw();
         token.approve(address(vault), 5_000_000);
         vault.resolveWithdraw(5_000_000, 1_000_000);
@@ -111,7 +113,7 @@ contract ShiftVaultTest is Test {
         vm.stopPrank();
 
         vm.startPrank(EXECUTOR);
-        vault.sendFundsToResolver();
+        vault.retrieveLiquidity();
         vault.processWithdraw();
         token.approve(address(vault), 5_000_000);
         vault.resolveWithdraw(5_000_000, 1_000_000);
@@ -135,7 +137,7 @@ contract ShiftVaultTest is Test {
         vm.stopPrank();
 
         vm.startPrank(EXECUTOR);
-        vault.sendFundsToResolver();
+        vault.retrieveLiquidity();
         vault.processWithdraw();
         token.approve(address(vault), 5_000_000);
         vault.resolveWithdraw(5_000_000, 1_000_000);
@@ -302,17 +304,15 @@ contract ShiftVaultTest is Test {
     function testPerformanceFee() public view {
         uint256 tvl = 100_000_000e6;
         uint8 decimals = tvlFeed.decimals();
-        (uint256 tvl18pt, ) = vault.exposed_normalize(tvl, decimals);
+        (uint256 tvl18pt,) = vault.exposed_normalize(tvl, decimals);
 
         uint256 fee = vault.exposed_calcPerformanceFee(tvl18pt);
 
         uint256 perfFeeBps = vault.performanceFeeBps();
         uint256 perfFeeRate = (perfFeeBps * 1e18) / 10_000;
 
-        int256 gain = int256(tvl18pt)
-            - int256(vault.exposed_snapshotTvl18pt())
-            + int256(vault.exposed_allTimeWithdrawn())
-            - int256(vault.exposed_allTimeDeposited());
+        int256 gain = int256(tvl18pt) - int256(vault.exposed_snapshotTvl18pt())
+            + int256(vault.exposed_cumulativeWithdrawn()) - int256(vault.exposed_cumulativeDeposit());
 
         uint256 expectedFee = gain > 0 ? (uint256(gain) * perfFeeRate) / 1e18 : 0;
         assertEq(fee, expectedFee);
@@ -326,7 +326,7 @@ contract ShiftVaultTest is Test {
         vm.prank(ORACLE);
 
         uint8 decimals = tvlFeed.decimals();
-        (uint256 tvl18pt, )= vault.exposed_normalize(tvl, decimals);
+        (uint256 tvl18pt,) = vault.exposed_normalize(tvl, decimals);
 
         uint256 fee = vault.exposed_calcMaintenanceFee(lastClaim, tvl18pt);
 
@@ -342,17 +342,15 @@ contract ShiftVaultTest is Test {
     function testFuzzPerformanceFee(uint256 _tvl) public view {
         vm.assume(_tvl >= MIN_DEPOSIT && _tvl < 1_000_000_000e6);
         uint8 decimals = tvlFeed.decimals();
-        (uint256 tvl18pt, ) = vault.exposed_normalize(_tvl, decimals);
+        (uint256 tvl18pt,) = vault.exposed_normalize(_tvl, decimals);
 
         uint256 fee = vault.exposed_calcPerformanceFee(tvl18pt);
 
         uint256 perfFeeBps = vault.performanceFeeBps();
         uint256 perfFeeRate = (perfFeeBps * 1e18) / 10_000;
 
-        int256 gain = int256(tvl18pt)
-            - int256(vault.exposed_snapshotTvl18pt())
-            + int256(vault.exposed_allTimeWithdrawn())
-            - int256(vault.exposed_allTimeDeposited());
+        int256 gain = int256(tvl18pt) - int256(vault.exposed_snapshotTvl18pt())
+            + int256(vault.exposed_cumulativeWithdrawn()) - int256(vault.exposed_cumulativeDeposit());
 
         uint256 expectedFee = gain > 0 ? (uint256(gain) * perfFeeRate) / 1e18 : 0;
         assertGt(fee, 0);
@@ -367,7 +365,7 @@ contract ShiftVaultTest is Test {
         uint256 lastClaim = block.timestamp;
         skip(_elapsed);
         uint8 decimals = tvlFeed.decimals();
-        (uint256 tvl18pt, )= vault.exposed_normalize(_tvl, decimals);
+        (uint256 tvl18pt,) = vault.exposed_normalize(_tvl, decimals);
 
         uint256 fee = vault.exposed_calcMaintenanceFee(lastClaim, tvl18pt);
 

@@ -20,18 +20,21 @@ contract DeployShiftProtocol_Testnet is Script {
         address tvlFeed = address(new ShiftTvlFeed(accessControl));
 
         address feeCollector = vm.envAddress("FEE_COLLECTOR_EOA");
+        string memory shareName = vm.envString("LP_TOKEN_NAME");
+        string memory shareSymbol = vm.envString("LP_TOKEN_SYMBOL");
         uint256 minTokenDeposit = vm.envUint("MIN_TOKEN_DEPOSIT");
         uint256 maxTvlAllowance = vm.envUint("MAX_TVL_ALLOWANCE");
         uint32 withdrawalDelay = uint32(vm.envUint("WITHDRAWAL_DELAY"));
 
         new ShiftVault(
-            accessControl, tokenContract, tvlFeed, feeCollector, minTokenDeposit, maxTvlAllowance, withdrawalDelay
+            accessControl, tokenContract, tvlFeed, feeCollector, shareName, shareSymbol, minTokenDeposit, maxTvlAllowance, withdrawalDelay
         );
 
         // IMPORTANT: The ShiftAccessControl and ShiftTvlFeed contracts must be deployed before the ShiftVault contract.
         // This is because the ShiftVault constructor requires the addresses of these contracts.
         // IMPORTANT: ShiftTvlFeed must be initialized with the Vault address after deployment. <initialize()>
         // IMPORTANT: ShiftVault must set performance and maintenance fees after deployment. Then unpaused <updateMaintenanceFee()> <updatePerformanceFee()> <releasePaused()>
+        // IMPORTANT: Oracle & Execution must be set after deployment.
 
         vm.stopBroadcast();
     }
@@ -49,18 +52,21 @@ contract DeployShiftProtocol_Mainnet is Script {
 
         address tokenContract = vm.envAddress("TOKEN_CONTRACT");
         address feeCollector = vm.envAddress("FEE_COLLECTOR_EOA");
+        string memory shareName = vm.envString("LP_TOKEN_NAME");
+        string memory shareSymbol = vm.envString("LP_TOKEN_SYMBOL");
         uint256 minTokenDeposit = vm.envUint("MIN_TOKEN_DEPOSIT");
         uint256 maxTvlAllowance = vm.envUint("MAX_TVL_ALLOWANCE");
         uint32 withdrawalDelay = uint32(vm.envUint("WITHDRAWAL_DELAY"));
 
         new ShiftVault(
-            accessControl, tokenContract, tvlFeed, feeCollector, minTokenDeposit, maxTvlAllowance, withdrawalDelay
+            accessControl, tokenContract, tvlFeed, feeCollector, shareName, shareSymbol, minTokenDeposit, maxTvlAllowance, withdrawalDelay
         );
 
         // IMPORTANT: The ShiftAccessControl and ShiftTvlFeed contracts must be deployed before the ShiftVault contract.
         // This is because the ShiftVault constructor requires the addresses of these contracts.
         // IMPORTANT: ShiftTvlFeed must be initialized with the Vault address after deployment. <initialize()>
         // IMPORTANT: ShiftVault must set performance and maintenance fees after deployment. Then unpaused <updateMaintenanceFee()> <updatePerformanceFee()> <releasePaused()>
+        // IMPORTANT: Oracle & Execution must be set after deployment.
 
         vm.stopBroadcast();
     }
@@ -76,18 +82,21 @@ contract DeployShiftVault_Mainnet is Script {
 
         address tokenContract = vm.envAddress("TOKEN_CONTRACT");
         address feeCollector = vm.envAddress("FEE_COLLECTOR_EOA");
+        string memory shareName = vm.envString("LP_TOKEN_NAME");
+        string memory shareSymbol = vm.envString("LP_TOKEN_SYMBOL");
         uint256 minTokenDeposit = vm.envUint("MIN_TOKEN_DEPOSIT");
         uint256 maxTvlAllowance = vm.envUint("MAX_TVL_ALLOWANCE");
         uint32 withdrawalDelay = uint32(vm.envUint("WITHDRAWAL_DELAY"));
 
         new ShiftVault(
-            accessControl, tokenContract, tvlFeed, feeCollector, minTokenDeposit, maxTvlAllowance, withdrawalDelay
+            accessControl, tokenContract, tvlFeed, feeCollector, shareName, shareSymbol, minTokenDeposit, maxTvlAllowance, withdrawalDelay
         );
 
         // IMPORTANT: The ShiftAccessControl and ShiftTvlFeed contracts must be deployed before the ShiftVault contract.
         // This is because the ShiftVault constructor requires the addresses of these contracts.
         // IMPORTANT: ShiftTvlFeed must be initialized with the Vault address after deployment. <initialize()>
         // IMPORTANT: ShiftVault must set performance and maintenance fees after deployment. Then unpaused <updateMaintenanceFee()> <updatePerformanceFee()> <releasePaused()>
+        // IMPORTANT: Oracle & Execution must be set after deployment.
 
         vm.stopBroadcast();
     }
