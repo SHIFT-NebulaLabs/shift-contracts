@@ -8,6 +8,9 @@ import "./mocks/ShiftTvlFeedHarness.sol";
 /// @notice MockVault simulates a vault for test purposes
 contract MockVault {
     function allowDeposit(address, uint256) external {}
+    function totalSupply() external pure returns (uint256) {
+        return 1000; // Mock total supply
+    }
 }
 
 /// @notice Test suite for ShiftTvlFeed

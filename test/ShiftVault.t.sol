@@ -26,7 +26,7 @@ contract ShiftVaultTest is Test {
     bytes32 constant ORACLE_ROLE = keccak256("ORACLE_ROLE");
 
     uint256 constant MIN_DEPOSIT = 1_000_000;
-    uint256 constant INITIAL_BALANCE = 10_000_000;
+    uint256 constant INITIAL_BALANCE = 100e6;
 
     /// @notice Sets up the test environment and deploys all mocks and the vault
     function setUp() public {
@@ -48,29 +48,29 @@ contract ShiftVaultTest is Test {
     }
 
     /// @dev Helper to whitelist a user, fund them, and approve the vault
-    function _setupUser(address user, uint256 amount) internal {
+    function _setupUser(address _user, uint256 _tvl, uint256 _amount) internal {
         vm.startPrank(ADMIN);
         address[] memory users = new address[](1);
-        users[0] = user;
+        users[0] = _user;
 
         vault.manageWhitelist(users);
-        deal(address(token), user, amount);
+        deal(address(token), _user, _amount);
         vm.stopPrank();
 
-        vm.startPrank(user);
+        vm.startPrank(_user);
         vault.reqDeposit();
         vm.stopPrank();
         vm.prank(ORACLE);
-        tvlFeed.updateTvlForDeposit(user, amount);
-        vm.startPrank(user);
-        token.approve(address(vault), amount);
+        tvlFeed.updateTvlForDeposit(_user, _tvl);
+        vm.startPrank(_user);
+        token.approve(address(vault), _amount);
     }
 
     // --- Deposit & Withdraw Flow Tests ---
 
     /// @notice Tests the full deposit and withdraw flow for a user
     function testDepositAndWithdrawFlow() public {
-        _setupUser(USER, INITIAL_BALANCE);
+        _setupUser(USER, 0, INITIAL_BALANCE);
         vault.deposit(5_000_000);
         assertEq(vault.balanceOf(USER), 5_000_000 * 1e12);
         assertEq(token.balanceOf(address(vault)), 5_000_000);
@@ -98,15 +98,37 @@ contract ShiftVaultTest is Test {
 
     /// @notice Tests that the first deposit mints the correct amount of shares
     function testFirstDepositSharesMatch() public {
-        _setupUser(USER, 1_000_000);
+        _setupUser(USER, 0, 1_000_000);
         vault.deposit(1_000_000);
         assertEq(vault.balanceOf(USER), 1_000_000 * 1e12);
         vm.stopPrank();
     }
 
+    /// @notice Tests that a user can deposit twice and receives correct shares and vault balance updates
+    function testDoubleDeposit() public {
+        _setupUser(USER, 0, INITIAL_BALANCE);
+        vault.deposit(INITIAL_BALANCE);
+        assertEq(vault.balanceOf(USER), INITIAL_BALANCE * 1e12);
+        assertEq(token.balanceOf(address(vault)), INITIAL_BALANCE);
+
+        address[] memory users = new address[](1);
+        users[0] = USER;
+
+        vm.stopPrank();
+        vm.prank(ADMIN);
+        vault.manageWhitelist(users);
+
+        // Deposit again
+        uint256 depositAmount = 500e6;
+        _setupUser(USER, INITIAL_BALANCE, depositAmount);
+        vault.deposit(depositAmount);
+        assertEq(vault.balanceOf(USER), (INITIAL_BALANCE + depositAmount) * 1e12);
+        assertEq(token.balanceOf(address(vault)), INITIAL_BALANCE + depositAmount);
+    }
+
     /// @notice Tests that a double withdraw reverts as expected
     function testDoubleWithdrawReverts() public {
-        _setupUser(USER, INITIAL_BALANCE);
+        _setupUser(USER, 0, INITIAL_BALANCE);
         vault.deposit(5_000_000);
         uint256 shares = vault.balanceOf(USER);
         vault.reqWithdraw(shares);
@@ -130,7 +152,7 @@ contract ShiftVaultTest is Test {
 
     /// @notice Tests that resolving a withdraw twice reverts
     function testResolveWithdrawTwiceReverts() public {
-        _setupUser(USER, INITIAL_BALANCE);
+        _setupUser(USER, 0, INITIAL_BALANCE);
         vault.deposit(5_000_000);
         uint256 shares = vault.balanceOf(USER);
         vault.reqWithdraw(shares);
@@ -151,7 +173,7 @@ contract ShiftVaultTest is Test {
     /// @notice Tests calculation of shares from token amount
     function testCalcSharesFromToken() public {
         address otherUser = address(0xBEEF);
-        _setupUser(otherUser, 10_000_000);
+        _setupUser(otherUser, 0, 10_000_000);
         vault.deposit(10_000_000);
         vm.stopPrank();
 
@@ -167,7 +189,7 @@ contract ShiftVaultTest is Test {
     /// @notice Tests calculation of token amount from shares
     function testCalcTokenFromShares() public {
         address otherUser = address(0xBEEF);
-        _setupUser(otherUser, 20_000_000);
+        _setupUser(otherUser, 0, 20_000_000);
         vault.deposit(20_000_000);
         vm.stopPrank();
 
@@ -183,7 +205,7 @@ contract ShiftVaultTest is Test {
     /// @notice Tests calculation of token amount from shares with a custom rate
     function testCalcTokenFromSharesWithCustomRate() public {
         address otherUser = address(0xBEEF);
-        _setupUser(otherUser, 50_000_000);
+        _setupUser(otherUser, 0, 50_000_000);
         vault.deposit(50_000_000);
         vm.stopPrank();
 
@@ -214,7 +236,7 @@ contract ShiftVaultTest is Test {
     /// @notice Tests calculation of resolver liquidity based on TVL and buffer value.
     function testCalcResolverLiquidity() public {
         // Set up a deposit to establish TVL
-        _setupUser(USER, 100_000_000e6);
+        _setupUser(USER, 0, 100_000_000e6);
         vault.deposit(100_000_000e6);
         vm.stopPrank();
 
@@ -235,13 +257,30 @@ contract ShiftVaultTest is Test {
         assertEq(resolverLiquidity, 99_000_000e6); // 100M - 1M buffer
     }
 
+    /// @notice Tests that getSharePrice returns the correct price per share after deposit and TVL update
+    function testGetSharePrice() public {
+        uint256 tvl = 100_000_000e6;
+        uint256 deposit = 200_000_000e6;
+        _setupUser(USER, 0, deposit);
+        vault.deposit(deposit);
+        vm.stopPrank();
+
+        // Set a fixed TVL
+        vm.prank(ORACLE);
+        tvlFeed.updateTvl(tvl);
+
+        uint256 priceExpected = (tvl * 1e18) / vault.totalSupply();
+        uint256 sharePrice = vault.getSharePrice();
+        assertEq(sharePrice, priceExpected ); // Convert to 6 decimals for comparison
+    }
+
     /// @notice Fuzz test for shares calculation from token amount
     function testFuzzCalcShares(uint256 _amount, uint256 _tvl) public {
         vm.assume(_amount >= MIN_DEPOSIT && _amount <= 1_000_000e6);
         vm.assume(_tvl >= MIN_DEPOSIT && _tvl <= 200_000_000e6);
 
         address otherUser = address(0xBEEF);
-        _setupUser(otherUser, _tvl);
+        _setupUser(otherUser, 0, _tvl);
         vault.deposit(_tvl);
         vm.stopPrank();
 
@@ -282,7 +321,7 @@ contract ShiftVaultTest is Test {
     function testFuzzCalcResolverLiquidity(uint256 _tvl) public {
         vm.assume(_tvl >= MIN_DEPOSIT && _tvl <= 200_000_000e6);
 
-        _setupUser(USER, _tvl);
+        _setupUser(USER, 0, _tvl);
         vault.deposit(_tvl);
         vm.stopPrank();
 

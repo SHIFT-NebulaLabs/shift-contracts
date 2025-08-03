@@ -5,6 +5,7 @@ interface IShiftTvlFeed {
     struct TvlData {
         uint256 value;
         uint256 timestamp;
+        uint256 supplySnapshot;
     }
 
     event TvlUpdated(uint256 newValue);
