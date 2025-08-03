@@ -37,20 +37,7 @@ Shift aims to deliver robust, secure, and efficient smart contracts for decentra
 ## Security & Audit (On Going)
 
 Security is a top priority for the Shift protocol.  
-The following contracts are currently undergoing a professional external security audit:
-
-- **ShiftAccessControl.sol**
-- **ShiftManager.sol**
-- **ShiftTvlFeed.sol**
-- **ShiftVault.sol**
-
-The audit covers:
-- Access control mechanisms and role separation
-- Fee logic and fund safety
-- Deposit and withdrawal batch processing
-- TVL feed integrity and historical data accuracy
-- Protection against common vulnerabilities (reentrancy, overflow, etc.)
-
+The following contracts are currently undergoing a professional external security audit.
 **Status:**  
 Audit is in progress. Results and recommendations will be published upon completion in the documentation and this repository.
 
