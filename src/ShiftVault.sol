@@ -229,13 +229,15 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
     }
 
     /// @notice Claim maintenance fee. Only admin.
-    function claimMaintenanceFee() external onlyAdmin {
+    function claimMaintenanceFee() public onlyAdmin {
         uint256 lastClaimed = lastMaintenanceFeeClaimedAt;
         uint256 nowTs = block.timestamp;
-        require(nowTs > lastClaimed, "ShiftVault: already claimed for this period");
-
         IShiftTvlFeed.TvlData memory lastTvl = tvlFeed.getLastTvl();
         require(nowTs - lastTvl.timestamp < FRESHNESS_VALIDITY, "ShiftVault: stale TVL data");
+        if (lastTvl.value == 0 && lastTvl.supplySnapshot == 0) return; // During initial setup
+
+        require(nowTs > lastClaimed, "ShiftVault: already claimed for this period");
+
         lastMaintenanceFeeClaimedAt = nowTs;
         (uint256 tvl18pt,) = _normalize(lastTvl.value, tvlFeed.decimals());
         uint256 feeAmount = _calcMaintenanceFee(lastClaimed, tvl18pt);
@@ -246,9 +248,10 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
     }
 
     /// @notice Claim performance fee. Only admin.
-    function claimPerformanceFee() external onlyAdmin {
+    function claimPerformanceFee() public onlyAdmin {
         IShiftTvlFeed.TvlData memory lastTvl = tvlFeed.getLastTvl();
         require(block.timestamp - lastTvl.timestamp < FRESHNESS_VALIDITY, "ShiftVault: stale TVL data");
+        if (lastTvl.value == 0 && lastTvl.supplySnapshot == 0) return; // During initial setup
 
         (uint256 tvl18pt,) = _normalize(lastTvl.value, tvlFeed.decimals());
         uint256 feeAmount = _calcPerformanceFee(tvl18pt);
@@ -260,6 +263,8 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
         _mint(feeCollector, share);
     }
 
+    // Overridden functions
+
     /// @notice Update the maximum TVL allowed in the vault. Only admin.
     /// @param _amount New maximum TVL value.
     function updateMaxTvl(uint256 _amount) public override onlyAdmin {
@@ -270,10 +275,20 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
         super.updateMaxTvl(_amount);
     }
 
+    /// @notice Updates the annual maintenance fee for the vault. Only callable by the admin.
+    /// @dev Claims any pending maintenance fees before updating the fee.
+    /// @param _annualFeeBps The new annual maintenance fee, expressed in basis points (bps).
     function updateMaintenanceFee(uint16 _annualFeeBps) public override onlyAdmin {
+        claimMaintenanceFee();
         super.updateMaintenanceFee(_annualFeeBps);
-        // Reset last maintenance fee claimed timestamp to ensure correct fee calculation
-        lastMaintenanceFeeClaimedAt = block.timestamp;
+    }
+
+    /// @notice Updates the performance fee for the vault. Only callable by the admin.
+    /// @dev Claims any pending performance fees before updating the fee.
+    /// @param _performanceFeeBps The new performance fee, expressed in basis points (bps).
+    function updatePerformanceFee(uint16 _performanceFeeBps) public override onlyAdmin {
+        claimPerformanceFee();
+        super.updatePerformanceFee(_performanceFeeBps);
     }
 
     // =========================
