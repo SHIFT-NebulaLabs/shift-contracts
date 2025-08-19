@@ -70,7 +70,6 @@ abstract contract ShiftManager is AccessModifier {
     /// @dev This function will be overridden by child contracts <ShiftVault>.
     /// @param _annualFeeBps New maintenance fee in basis points.
     function updateMaintenanceFee(uint16 _annualFeeBps) public virtual onlyAdmin {
-        require(_annualFeeBps > 0, "ShiftManager: zero maintenance fee");
         require(_annualFeeBps <= 10_000, "ShiftManager: maintenance fee exceeds 100%");
         maintenanceFeeBpsAnnual = _annualFeeBps;
         maintenanceFeePerSecond18pt = _calc18ptFromBps(_annualFeeBps) / uint256(SECONDS_IN_YEAR);
@@ -81,7 +80,6 @@ abstract contract ShiftManager is AccessModifier {
     /// @param _feeBps New performance fee in basis points.
     function updatePerformanceFee(uint16 _feeBps) public virtual onlyAdmin {
         require(paused, "ShiftManager: contract not paused");
-        require(_feeBps > 0, "ShiftManager: zero performance fee");
         require(_feeBps <= 10_000, "ShiftManager: performance fee exceeds 100%");
         performanceFeeBps = _feeBps;
         performanceFee18pt = _calc18ptFromBps(_feeBps);
