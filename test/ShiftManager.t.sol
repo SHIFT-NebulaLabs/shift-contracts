@@ -95,10 +95,10 @@ contract ShiftManagerTest is Test {
         manager.updateTimelock(31 days);
 
         vm.expectRevert();
-        manager.updatePerformanceFee(0);
+        manager.updatePerformanceFee(10001);
 
         vm.expectRevert();
-        manager.updateMaintenanceFee(0);
+        manager.updateMaintenanceFee(10001);
 
         vm.expectRevert();
         manager.updateMinDeposit(0);
