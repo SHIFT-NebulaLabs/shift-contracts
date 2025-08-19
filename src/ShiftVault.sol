@@ -158,7 +158,7 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
     }
 
     /// @notice Withdraw tokens after batch resolved and timelock passed.
-    function withdraw() external nonReentrant notPaused {
+    function withdraw() external nonReentrant {
         WithdrawState storage userState = userWithdrawStates[msg.sender];
         uint256 shares = userState.sharesAmount;
         require(shares > 0, "ShiftVault: no shares to withdraw");
