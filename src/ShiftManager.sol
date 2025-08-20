@@ -57,7 +57,6 @@ abstract contract ShiftManager is AccessModifier {
         timelock = _timeLock;
     }
 
-
     /// @notice Update maximum total value locked (TVL).
     /// @dev This function will be overridden by child contracts <ShiftVault>.
     /// @dev It is important to ensure that the new TVL cap have the same decimal precision as the tvlFeed.

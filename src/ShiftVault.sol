@@ -64,7 +64,10 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
         uint256 _minDeposit,
         uint256 _maxTvl,
         uint32 _timeLock
-    ) ShiftManager(_accessControlContract, _feeCollector, _executor, _minDeposit, _maxTvl, _timeLock) ERC20(_shareName, _shareSymbol) {
+    )
+        ShiftManager(_accessControlContract, _feeCollector, _executor, _minDeposit, _maxTvl, _timeLock)
+        ERC20(_shareName, _shareSymbol)
+    {
         require(_tokenContract != address(0), "ShiftVault: zero token address");
         require(_tvlFeedContract != address(0), "ShiftVault: zero TVL feed address");
 
@@ -120,7 +123,7 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
 
         require(tvl18pt + baseToken18pt <= maxTvl18pt, "ShiftVault: exceeds max TVL");
 
-        uint256 shares =  _calcSharesFromToken(actualAmount, state.requestIndex);
+        uint256 shares = _calcSharesFromToken(actualAmount, state.requestIndex);
 
         require(shares > 0, "ShiftVault: zero shares calculated");
         _mint(msg.sender, shares);

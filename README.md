@@ -104,64 +104,39 @@ For deeper architectural details, see the [Shift Documentation](https://nebulala
 
 ### Prerequisites
 
-- [Foundry](https://book.getfoundry.sh/getting-started/installation) installed (`forge`)
+- [Foundry](https://getfoundry.sh/introduction/installation) installed (`forge`)
+- [Make](https://www.gnu.org/software/make/) installed (`make`)
 - A configured `.env` file with relevant environment variables (RPC endpoints, API keys, etc.)
 
-### Environment Setup
-
-```sh
-source .env
-```
-
----
+In this repo it uses `Make`, to find the specific commant see [Foundry](https://getfoundry.sh/forge/overview)
 
 ## 🛠️ Core Commands
 
-Replace `<Filename>` and environment variables as needed for your use-case.
-
 **📦 Build Contracts**
 ```sh
-forge build
-```
-
-**📝 Format Contracts**
-```sh
-forge fmt
+make build
 ```
 
 **🧹 Clean Build Artifacts**
 ```sh
-forge clean
+make clean
 ```
-
-**🛡️ Test Coverage**
-```sh
-forge coverage
-```
-
----
 
 ## ⚙️ Script Execution
 
 **Local Simulation**
 ```sh
-forge script script/<Filename>.s.sol:<DeployFunction>
+make sim-deploy-local
 ```
 
 **Local On-chain Simulation**
 ```sh
-forge script script/<Filename>.s.sol:<DeployFunction> --rpc-url $RPC_URL_TEST
+make sim-deploy-sepolia || make sim-deploy-arbitrum
 ```
 
 **Real On-chain Deployment & Verification**
 ```sh
-forge script script/<Filename>.s.sol:<DeployFunction> \
-  --rpc-url $RPC_URL \
-  --interactives 1 \
-  --broadcast \
-  --verifier etherscan \
-  --etherscan-api-key $ETHERSCAN_API_KEY \
-  --verify
+make deploy-sepolia || make deploy-arbitrum:
 ```
 
 ---
@@ -170,24 +145,8 @@ forge script script/<Filename>.s.sol:<DeployFunction> \
 
 **Run All Tests**
 ```sh
-forge test
+make testing
 ```
-
-**Medium Verbosity**
-```sh
-forge test -vv
-```
-
-**Maximum Verbosity**
-```sh
-forge test -vvvv
-```
-
-**Specific Test File**
-```sh
-forge test --match-path test/<TestFile>.t.sol
-```
-
 ---
 
 ## 🤝 Contributing

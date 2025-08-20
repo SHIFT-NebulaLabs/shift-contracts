@@ -20,7 +20,16 @@ contract DeployShiftVault is Script {
         uint32 withdrawalDelay = uint32(vm.envUint("WITHDRAWAL_DELAY"));
 
         new ShiftVault(
-            accessControl, tokenContract, tvlFeed, feeCollector, executor, shareName, shareSymbol, minTokenDeposit, maxTvlAllowance, withdrawalDelay
+            accessControl,
+            tokenContract,
+            tvlFeed,
+            feeCollector,
+            executor,
+            shareName,
+            shareSymbol,
+            minTokenDeposit,
+            maxTvlAllowance,
+            withdrawalDelay
         );
 
         vm.stopBroadcast();

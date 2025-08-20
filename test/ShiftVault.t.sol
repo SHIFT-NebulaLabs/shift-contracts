@@ -37,7 +37,16 @@ contract ShiftVaultTest is Test {
         token = new MockERC20(6);
         tvlFeed = new ShiftTvlFeed(address(access));
         vault = new ShiftVaultHarness(
-            address(access), address(token), address(tvlFeed), FEE_COLLECTOR, EXECUTOR, SHARE_NAME, SHARE_SYMBOL, MIN_DEPOSIT, 1_000_000_000e6, 1 days
+            address(access),
+            address(token),
+            address(tvlFeed),
+            FEE_COLLECTOR,
+            EXECUTOR,
+            SHARE_NAME,
+            SHARE_SYMBOL,
+            MIN_DEPOSIT,
+            1_000_000_000e6,
+            1 days
         );
         vm.startPrank(ADMIN);
         tvlFeed.initialize(address(vault));
@@ -229,7 +238,7 @@ contract ShiftVaultTest is Test {
 
         uint256 priceExpected = (tvl * 1e18) / vault.totalSupply();
         uint256 sharePrice = vault.getSharePrice();
-        assertEq(sharePrice, priceExpected ); // Convert to 6 decimals for comparison
+        assertEq(sharePrice, priceExpected); // Convert to 6 decimals for comparison
     }
 
     /// @notice Fuzz test for shares calculation from token amount
