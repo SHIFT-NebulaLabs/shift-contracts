@@ -80,7 +80,6 @@ contract ShiftVaultTest is Test {
         vm.stopPrank();
 
         vm.startPrank(EXECUTOR);
-        vault.retrieveLiquidity();
         vault.processWithdraw();
         token.approve(address(vault), 5_000_000);
         vault.resolveWithdraw(5_000_000, 1_000_000);
@@ -135,7 +134,6 @@ contract ShiftVaultTest is Test {
         vm.stopPrank();
 
         vm.startPrank(EXECUTOR);
-        vault.retrieveLiquidity();
         vault.processWithdraw();
         token.approve(address(vault), 5_000_000);
         vault.resolveWithdraw(5_000_000, 1_000_000);
@@ -159,7 +157,6 @@ contract ShiftVaultTest is Test {
         vm.stopPrank();
 
         vm.startPrank(EXECUTOR);
-        vault.retrieveLiquidity();
         vault.processWithdraw();
         token.approve(address(vault), 5_000_000);
         vault.resolveWithdraw(5_000_000, 1_000_000);
@@ -218,45 +215,6 @@ contract ShiftVaultTest is Test {
         assertEq(tokens, expectedTokens);
     }
 
-    /// @notice Tests calculation of buffer value based on TVL (Total Value Locked).
-    function testCalcBufferValue() public {
-        // Set a fixed TVL
-        vm.prank(ORACLE);
-        tvlFeed.updateTvl(100_000_000e6);
-
-        // Set the buffer basis points to 100 (1%)
-        vm.prank(ADMIN);
-        vault.updateBufferBps(100);
-
-        // Calculate buffer value
-        uint256 bufferValue = vault.exposed_calcBufferValue();
-        assertEq(bufferValue, 1_000_000e6); // 1% of TVL as buffer
-    }
-
-    /// @notice Tests calculation of resolver liquidity based on TVL and buffer value.
-    function testCalcResolverLiquidity() public {
-        // Set up a deposit to establish TVL
-        _setupUser(USER, 0, 100_000_000e6);
-        vault.deposit(100_000_000e6);
-        vm.stopPrank();
-
-        // Set a fixed TVL
-        vm.prank(ORACLE);
-        tvlFeed.updateTvl(100_000_000e6);
-
-        // Set the buffer basis points to 100 (1%)
-        vm.prank(ADMIN);
-        vault.updateBufferBps(100);
-
-        // Calculate buffer value
-        uint256 bufferValue = vault.exposed_calcBufferValue();
-        assertEq(bufferValue, 1_000_000e6); // 1% of TVL as buffer
-
-        // Calculate resolver liquidity
-        uint256 resolverLiquidity = vault.exposed_calcResolverLiquidity(bufferValue);
-        assertEq(resolverLiquidity, 99_000_000e6); // 100M - 1M buffer
-    }
-
     /// @notice Tests that getSharePrice returns the correct price per share after deposit and TVL update
     function testGetSharePrice() public {
         uint256 tvl = 100_000_000e6;
@@ -301,40 +259,6 @@ contract ShiftVaultTest is Test {
         uint256 tokensExpected = (_shares * _rate) / 1e18;
         uint256 tokens = vault.exposed_calcTokenFromShares(_shares, _rate);
         assertEq(tokens, tokensExpected);
-    }
-
-    /// @notice Fuzz test to verify the correct calculation of buffer value based on TVL (Total Value Locked).
-    function testFuzzCalcBufferValue(uint256 _tvl) public {
-        vm.assume(_tvl >= MIN_DEPOSIT && _tvl <= 1_000_000_000e6);
-        vm.prank(ORACLE);
-        tvlFeed.updateTvl(_tvl);
-
-        // Set buffer basis points to 100 (1%)
-        vm.prank(ADMIN);
-        vault.updateBufferBps(100);
-
-        uint256 bufferValue = vault.exposed_calcBufferValue();
-        assertEq(bufferValue, _tvl / 100); // 1% of TVL as buffer
-    }
-
-    /// @notice Fuzz test for resolver liquidity calculation
-    function testFuzzCalcResolverLiquidity(uint256 _tvl) public {
-        vm.assume(_tvl >= MIN_DEPOSIT && _tvl <= 200_000_000e6);
-
-        _setupUser(USER, 0, _tvl);
-        vault.deposit(_tvl);
-        vm.stopPrank();
-
-        vm.prank(ORACLE);
-        tvlFeed.updateTvl(_tvl); // Set a random TVL
-
-        vm.prank(ADMIN);
-        vault.updateBufferBps(100);
-
-        uint256 bufferValue = vault.exposed_calcBufferValue();
-        uint256 resolverLiquidity = vault.exposed_calcResolverLiquidity(bufferValue);
-
-        assertEq(resolverLiquidity, _tvl - (_tvl * 100 / 10_000) - vault.availableForWithdraw());
     }
 
     // --- Fee Calculation Tests ---

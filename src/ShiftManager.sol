@@ -13,14 +13,12 @@ abstract contract ShiftManager is AccessModifier {
 
     uint16 public performanceFeeBps; // 1% = 100 basis points
     uint16 public maintenanceFeeBpsAnnual; // 1% = 100 basis points
-    uint16 public bufferBps; // 1% = 100 basis points
     uint32 public timelock;
     uint256 public minDepositAmount;
     uint256 public maxTvl;
     address public feeCollector;
     uint256 internal performanceFee18pt; // 1% = 0.01 * 10^18
     uint256 internal maintenanceFeePerSecond18pt; // 1% = 0.01 * 10^18
-    uint256 internal buffer18pt; // 1% = 0.01 * 10^18
 
     mapping(address => bool) internal isWhitelisted;
 
@@ -125,12 +123,6 @@ abstract contract ShiftManager is AccessModifier {
     function updateMinDeposit(uint256 _amount) external onlyAdmin {
         _validateDepositAndTvl(_amount, maxTvl);
         minDepositAmount = _amount;
-    }
-
-    function updateBufferBps(uint16 _bufferBps) external onlyAdmin {
-        require(_bufferBps <= 10_000, "ShiftManager: buffer exceeds 100%");
-        bufferBps = _bufferBps;
-        buffer18pt = _bufferBps == 0 ? 0 : _calc18ptFromBps(_bufferBps);
     }
 
     /// @notice Convert basis points to 18-decimal fixed point.

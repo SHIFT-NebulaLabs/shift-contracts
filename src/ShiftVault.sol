@@ -326,12 +326,6 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
         batchState.rate = _rate;
     }
 
-    /// @notice Transfer available liquidity to the executor. Only executor.
-    function retrieveLiquidity() external onlyExecutor nonReentrant notPaused {
-        uint256 liquidity = _calcResolverLiquidity(_calcBufferValue());
-        baseToken.safeTransfer(msg.sender, liquidity);
-    }
-
     // =========================
     // View functions
     // =========================
@@ -370,14 +364,6 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
         } else {
             return batchWithdrawStates[currentBatchId].totalShares;
         }
-    }
-
-    /// @notice Returns the current resolver liquidity and buffer amount available for withdrawal processing.
-    /// @return reqInvest True if there is base token liquidity available for resolver (excluding buffer and pending withdrawals).
-    /// @return bufferAmount Amount of base tokens held as buffer.
-    function getVaultData() external view onlyExecutor returns (bool reqInvest, uint256 bufferAmount) {
-        bufferAmount = _calcBufferValue();
-        reqInvest = _calcResolverLiquidity(bufferAmount) > 0;
     }
 
     /**
@@ -457,33 +443,6 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
         if (maintenanceFeePerSecond18pt == 0) return 0; // No fee if zero rate
         uint256 elapsed = block.timestamp - _lastClaimTimestamp;
         return (_tvl18pt * maintenanceFeePerSecond18pt * elapsed) / 1e18;
-    }
-
-    /// @notice Calculates the buffer value based on the current TVL and buffer basis points.
-    /// @dev Uses normalized TVL and base token decimals to compute the buffer value.
-    ///      Returns 0 if bufferBps is zero, otherwise calculates the buffer as a proportion of TVL.
-    /// @return The buffer value to mint, adjusted for base token decimals.
-    function _calcBufferValue() internal view returns (uint256) {
-        IShiftTvlFeed.TvlData memory lastTvl = tvlFeed.getLastTvl();
-        require(block.timestamp - lastTvl.timestamp < FRESHNESS_VALIDITY, "ShiftVault: stale TVL data");
-        (uint256 tvl18pt,) = _normalize(lastTvl.value, tvlFeed.decimals());
-        (, uint8 baseTokenScaleFactor) = _normalize(1, baseToken.decimals()); // Only to retrieve missing decimals from base token
-
-        if (bufferBps == 0) return 0; // No buffer, return TVL only
-
-        UD60x18 buffer = ud(tvl18pt).mul(ud(buffer18pt)).div(ud(1e18));
-        return baseTokenScaleFactor == 0 ? buffer.unwrap() : buffer.unwrap() / 10 ** baseTokenScaleFactor;
-    }
-
-    /// @notice Calculates the available liquidity for the resolver, excluding the buffer and withdrawable amounts.
-    /// @dev Returns zero if the calculated liquidity exceeds the contract's token balance.
-    /// @param _bufferAmount The amount to be reserved as a buffer and excluded from liquidity.
-    /// @return The amount of liquidity available for the resolver.
-    function _calcResolverLiquidity(uint256 _bufferAmount) internal view returns (uint256) {
-        uint256 balance = baseToken.balanceOf(address(this));
-        uint256 required = availableForWithdraw + _bufferAmount;
-
-        return balance > required ? balance - required : 0;
     }
 
     /// @notice Check if user's deposit request expired.

@@ -37,14 +37,6 @@ contract ShiftVaultHarness is ShiftVault {
         return _calcMaintenanceFee(_t, _p);
     }
 
-    function exposed_calcBufferValue() external view returns (uint256) {
-        return _calcBufferValue();
-    }
-
-    function exposed_calcResolverLiquidity(uint256 _bufferAmount) external view returns (uint256) {
-        return _calcResolverLiquidity(_bufferAmount);
-    }
-
     function exposed_isExpired() external view returns (bool) {
         return _isExpired();
     }
