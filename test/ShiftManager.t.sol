@@ -43,9 +43,7 @@ contract ShiftManagerTest is Test {
         vm.startPrank(ADMIN); // Impersonate admin for protected function
         bool before = manager.whitelistEnabled();
 
-        address[] memory users = new address[](1);
-        users[0] = address(0);
-        manager.manageWhitelist(users);
+        manager.toggleWhitelist();
         assertEq(manager.whitelistEnabled(), !before);
     }
 

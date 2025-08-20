@@ -94,13 +94,16 @@ abstract contract ShiftManager is AccessModifier {
     /// @notice Whitelist management or toggle whitelist enabled.
     /// @param _user Address to whitelist/unwhitelist, or zero address to toggle whitelist.
     function manageWhitelist(address[] calldata _user) external onlyAdmin {
-        if (_user[0] == address(0)) {
-            whitelistEnabled = !whitelistEnabled;
-        } else {
-            for (uint256 i = 0; i < _user.length; i++) {
-                isWhitelisted[_user[i]] = !isWhitelisted[_user[i]];
-            }
+        uint256 length = _user.length;
+        for (uint256 i = 0; i < length; i++) {
+            require(_user[i] != address(0), "ShiftManager: zero address");
+            isWhitelisted[_user[i]] = !isWhitelisted[_user[i]];
         }
+    }
+
+    /// @notice Toggles the whitelist feature on or off.
+    function toggleWhitelist() external onlyAdmin {
+        whitelistEnabled = !whitelistEnabled;
     }
 
     /// @notice Update fee collector address.
