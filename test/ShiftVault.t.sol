@@ -186,12 +186,12 @@ contract ShiftVaultTest is Test {
         vault.deposit(10_000_000);
         vm.stopPrank();
 
-        uint256 amount = 5_000_000;
+        uint256 amount18pt = 5_000_000 * 1e12;
         uint256 totalSupply = vault.totalSupply();
-        uint256 tvl = 10_000_000;
-        uint256 expectedShares = (amount * 1e12 * totalSupply) / (tvl * 1e12);
+        uint256 tvl18pt = 10_000_000 * 1e12;
+        uint256 expectedShares = (amount18pt * totalSupply) / tvl18pt;
 
-        uint256 shares = vault.exposed_calcSharesFromToken(amount, 0);
+        uint256 shares = vault.exposed_calcSharesFromToken(amount18pt, tvl18pt, totalSupply);
         assertEq(shares, expectedShares);
     }
 
@@ -257,9 +257,12 @@ contract ShiftVaultTest is Test {
         vm.prank(ORACLE);
         tvlFeed.updateTvl(_tvl); // Set a random TVL
 
+        uint256 amount18pt = _amount * 1e12;
+        uint256 tvl18pt = _tvl * 1e12;
+
         uint256 totalSupply = vault.totalSupply();
-        uint256 expectedShares = (_amount * 1e12 * totalSupply) / (_tvl * 1e12);
-        uint256 shares = vault.exposed_calcSharesFromToken(_amount, 1);
+        uint256 expectedShares = (amount18pt * totalSupply) / tvl18pt;
+        uint256 shares = vault.exposed_calcSharesFromToken(amount18pt, tvl18pt, totalSupply);
 
         assertApproxEqAbs(shares, expectedShares, 1e9); //(0.0000000001 in 18 decimals) due to rounding errors on native solidity compare to UD60x18 math
     }

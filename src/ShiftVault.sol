@@ -115,15 +115,15 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
         uint256 actualAmount = baseToken.balanceOf(executor) - balanceBefore;
         require(actualAmount > 0, "ShiftVault: zero actual deposit");
 
-        uint256 tvl = tvlFeed.getTvlEntry(state.requestIndex).value;
+        IShiftTvlFeed.TvlData memory tvl = tvlFeed.getTvlEntry(state.requestIndex);
         // Normalize values once for efficiency
-        (uint256 tvl18pt,) = _normalize(tvl, tvlFeed.decimals());
+        (uint256 tvl18pt,) = _normalize(tvl.value, tvlFeed.decimals());
         (uint256 maxTvl18pt,) = _normalize(maxTvl, tvlFeed.decimals());
         (uint256 baseToken18pt,) = _normalize(actualAmount, baseToken.decimals());
 
         require(tvl18pt + baseToken18pt <= maxTvl18pt, "ShiftVault: exceeds max TVL");
 
-        uint256 shares = _calcSharesFromToken(actualAmount, state.requestIndex);
+        uint256 shares = _calcSharesFromToken(baseToken18pt, tvl18pt, tvl.supplySnapshot);
 
         require(shares > 0, "ShiftVault: zero shares calculated");
         _mint(msg.sender, shares);
@@ -389,18 +389,14 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
     // Internal/private functions
     // =========================
 
-    /// @notice Calculate shares to mint for a given token deposit based on TVL at request time.
-    /// @param _tokenAmount Amount of base tokens deposited.
-    /// @param _tvlIndex TVL feed index at the time of deposit request.
-    /// @return Number of shares to mint (18 decimals).
-    function _calcSharesFromToken(uint256 _tokenAmount, uint256 _tvlIndex) internal view returns (uint256) {
-        IShiftTvlFeed.TvlData memory lastTvl = tvlFeed.getTvlEntry(_tvlIndex);
-        (uint256 baseToken18pt,) = _normalize(_tokenAmount, baseToken.decimals());
-        if (lastTvl.supplySnapshot == 0) {
-            return baseToken18pt; // If no supply, return token amount as shares
-        }
-        (uint256 tvl18pt,) = _normalize(lastTvl.value, tvlFeed.decimals());
-        return _calcShare(baseToken18pt, tvl18pt, lastTvl.supplySnapshot);
+    /// @notice Calculates the number of shares to mint for a deposit, based on the normalized base token amount, TVL, and supply snapshot at the time of deposit request.
+    /// @dev If the vault has no existing supply, returns the normalized token amount as shares (1:1). Otherwise, uses the share calculation formula.
+    /// @param _baseToken18pt The deposit amount of base tokens, normalized to 18 decimals.
+    /// @param _tvl18pt The TVL at the time of deposit, normalized to 18 decimals.
+    /// @param _supplySnapshot The total supply snapshot at the time of deposit.
+    /// @return The number of shares to mint (18 decimals).
+    function _calcSharesFromToken(uint256 _baseToken18pt, uint256 _tvl18pt, uint256 _supplySnapshot) internal pure returns (uint256) {
+        return _supplySnapshot > 0 ? _calcShare(_baseToken18pt, _tvl18pt, _supplySnapshot) : _baseToken18pt;
     }
 
     /// @notice Calculates shares to mint for a deposit based on TVL at request time.

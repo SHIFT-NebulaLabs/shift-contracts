@@ -31,8 +31,8 @@ contract ShiftVaultHarness is ShiftVault {
         )
     {}
 
-    function exposed_calcSharesFromToken(uint256 _amount, uint256 _tvlIndex) external view returns (uint256) {
-        return _calcSharesFromToken(_amount, _tvlIndex);
+    function exposed_calcSharesFromToken(uint256 _amount18pt, uint256 _tvl18pt, uint256 _supplySnapshot) external pure returns (uint256) {
+        return _calcSharesFromToken(_amount18pt, _tvl18pt, _supplySnapshot);
     }
 
     function exposed_calcTokenFromShares(uint256 _share, uint256 _rate) external view returns (uint256) {
