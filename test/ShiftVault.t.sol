@@ -28,6 +28,9 @@ contract ShiftVaultTest is Test {
     uint256 constant MIN_DEPOSIT = 1_000_000;
     uint256 constant INITIAL_BALANCE = 100e6;
 
+    uint16 constant PERFORMANCE_FEE = 2000;
+    uint16 constant MAINTENANCE_FEE = 200;
+
     /// @notice Sets up the test environment and deploys all mocks and the vault
     function setUp() public {
         access = new MockAccessControl();
@@ -50,8 +53,8 @@ contract ShiftVaultTest is Test {
         );
         vm.startPrank(ADMIN);
         tvlFeed.initialize(address(vault));
-        vault.updatePerformanceFee(2000);
-        vault.updateMaintenanceFee(200);
+        vault.updatePerformanceFee(PERFORMANCE_FEE);
+        vault.updateMaintenanceFee(MAINTENANCE_FEE);
         vault.releasePause();
         vm.stopPrank();
     }
@@ -280,7 +283,7 @@ contract ShiftVaultTest is Test {
 
         uint256 fee = vault.exposed_calcPerformanceFee(tvl18pt);
 
-        uint256 perfFeeBps = vault.performanceFeeBps();
+        uint256 perfFeeBps = PERFORMANCE_FEE;
         uint256 perfFeeRate = (perfFeeBps * 1e18) / 10_000;
 
         int256 gain = int256(tvl18pt) - int256(vault.exposed_snapshotTvl18pt())
@@ -303,7 +306,7 @@ contract ShiftVaultTest is Test {
         uint256 fee = vault.exposed_calcMaintenanceFee(lastClaim, tvl18pt);
 
         uint256 elapsed = 1 days;
-        uint256 maintenanceFeeAnnual = vault.maintenanceFeeBpsAnnual();
+        uint256 maintenanceFeeAnnual = MAINTENANCE_FEE;
         uint256 secondsInYear = 365 days;
         uint256 maintenanceFeePerSecond18pt = (maintenanceFeeAnnual * 1e18) / 10_000 / secondsInYear;
         uint256 expectedFee = (tvl18pt * maintenanceFeePerSecond18pt * elapsed) / 1e18;
@@ -318,7 +321,7 @@ contract ShiftVaultTest is Test {
 
         uint256 fee = vault.exposed_calcPerformanceFee(tvl18pt);
 
-        uint256 perfFeeBps = vault.performanceFeeBps();
+        uint256 perfFeeBps = PERFORMANCE_FEE;
         uint256 perfFeeRate = (perfFeeBps * 1e18) / 10_000;
 
         int256 gain = int256(tvl18pt) - int256(vault.exposed_snapshotTvl18pt())
@@ -341,7 +344,7 @@ contract ShiftVaultTest is Test {
 
         uint256 fee = vault.exposed_calcMaintenanceFee(lastClaim, tvl18pt);
 
-        uint256 maintenanceFeeAnnual = vault.maintenanceFeeBpsAnnual();
+        uint256 maintenanceFeeAnnual = MAINTENANCE_FEE;
         uint256 secondsInYear = 365 days;
         uint256 maintenanceFeePerSecond18pt = (maintenanceFeeAnnual * 1e18) / 10_000 / secondsInYear;
         uint256 expectedFee = (tvl18pt * maintenanceFeePerSecond18pt * _elapsed) / 1e18;

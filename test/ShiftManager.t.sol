@@ -71,12 +71,6 @@ contract ShiftManagerTest is Test {
         manager.updateTimelock(2 days);
         assertEq(manager.timelock(), 2 days);
 
-        manager.updatePerformanceFee(250);
-        assertEq(manager.performanceFeeBps(), 250);
-
-        manager.updateMaintenanceFee(300);
-        assertEq(manager.maintenanceFeeBpsAnnual(), 300);
-
         manager.updateMinDeposit(5 ether);
         assertEq(manager.minDepositAmount(), 5 ether);
 
