@@ -58,12 +58,13 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
         address _tokenContract,
         address _tvlFeedContract,
         address _feeCollector,
+        address _executor,
         string memory _shareName,
         string memory _shareSymbol,
         uint256 _minDeposit,
         uint256 _maxTvl,
         uint32 _timeLock
-    ) ShiftManager(_accessControlContract, _feeCollector, _minDeposit, _maxTvl, _timeLock) ERC20(_shareName, _shareSymbol) {
+    ) ShiftManager(_accessControlContract, _feeCollector, _executor, _minDeposit, _maxTvl, _timeLock) ERC20(_shareName, _shareSymbol) {
         require(_tokenContract != address(0), "ShiftVault: zero token address");
         require(_tvlFeedContract != address(0), "ShiftVault: zero TVL feed address");
 
@@ -106,9 +107,9 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
         state.expirationTime = 0;
 
         // Handle fee-on-transfer tokens efficiently
-        uint256 balanceBefore = baseToken.balanceOf(address(this));
-        baseToken.safeTransferFrom(msg.sender, address(this), _tokenAmount);
-        uint256 actualAmount = baseToken.balanceOf(address(this)) - balanceBefore;
+        uint256 balanceBefore = baseToken.balanceOf(executor);
+        baseToken.safeTransferFrom(msg.sender, executor, _tokenAmount);
+        uint256 actualAmount = baseToken.balanceOf(executor) - balanceBefore;
         require(actualAmount > 0, "ShiftVault: zero actual deposit");
 
         uint256 tvl = tvlFeed.getTvlEntry(state.requestIndex).value;

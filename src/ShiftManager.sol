@@ -17,6 +17,7 @@ abstract contract ShiftManager is AccessModifier {
     uint256 public minDepositAmount;
     uint256 public maxTvl;
     address public feeCollector;
+    address public executor;
     uint256 internal performanceFee18pt; // 1% = 0.01 * 10^18
     uint256 internal maintenanceFeePerSecond18pt; // 1% = 0.01 * 10^18
 
@@ -39,15 +40,18 @@ abstract contract ShiftManager is AccessModifier {
     constructor(
         address _accessControlContract,
         address _feeCollector,
+        address _executor,
         uint256 _minDeposit,
         uint256 _maxTvl,
         uint32 _timeLock
     ) AccessModifier(_accessControlContract) {
         require(_accessControlContract != address(0), "ShiftManager: zero access control");
         require(_feeCollector != address(0), "ShiftManager: zero fee collector");
+        require(_executor != address(0), "ShiftManager: zero executor");
         require(_timeLock > 0, "ShiftManager: zero timelock");
         _validateDepositAndTvl(_minDeposit, _maxTvl);
         feeCollector = _feeCollector;
+        executor = _executor;
         minDepositAmount = _minDeposit;
         maxTvl = _maxTvl;
         timelock = _timeLock;
@@ -109,6 +113,11 @@ abstract contract ShiftManager is AccessModifier {
     function updateFeeCollector(address _newFeeCollector) external onlyAdmin {
         require(_newFeeCollector != address(0), "ShiftManager: zero fee collector");
         feeCollector = _newFeeCollector;
+    }
+
+    function updateExecutor(address _newExecutor) external onlyAdmin {
+        require(_newExecutor != address(0), "ShiftManager: zero executor");
+        executor = _newExecutor;
     }
 
     /// @notice Update timelock duration.

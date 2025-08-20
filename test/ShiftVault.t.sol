@@ -37,7 +37,7 @@ contract ShiftVaultTest is Test {
         token = new MockERC20(6);
         tvlFeed = new ShiftTvlFeed(address(access));
         vault = new ShiftVaultHarness(
-            address(access), address(token), address(tvlFeed), FEE_COLLECTOR, SHARE_NAME, SHARE_SYMBOL, MIN_DEPOSIT, 1_000_000_000e6, 1 days
+            address(access), address(token), address(tvlFeed), FEE_COLLECTOR, EXECUTOR, SHARE_NAME, SHARE_SYMBOL, MIN_DEPOSIT, 1_000_000_000e6, 1 days
         );
         vm.startPrank(ADMIN);
         tvlFeed.initialize(address(vault));
@@ -73,7 +73,7 @@ contract ShiftVaultTest is Test {
         _setupUser(USER, 0, INITIAL_BALANCE);
         vault.deposit(5_000_000);
         assertEq(vault.balanceOf(USER), 5_000_000 * 1e12);
-        assertEq(token.balanceOf(address(vault)), 5_000_000);
+        assertEq(token.balanceOf(address(EXECUTOR)), 5_000_000);
 
         uint256 shares = vault.balanceOf(USER);
         vault.reqWithdraw(shares);
@@ -108,7 +108,7 @@ contract ShiftVaultTest is Test {
         _setupUser(USER, 0, INITIAL_BALANCE);
         vault.deposit(INITIAL_BALANCE);
         assertEq(vault.balanceOf(USER), INITIAL_BALANCE * 1e12);
-        assertEq(token.balanceOf(address(vault)), INITIAL_BALANCE);
+        assertEq(token.balanceOf(EXECUTOR), INITIAL_BALANCE);
 
         address[] memory users = new address[](1);
         users[0] = USER;
@@ -122,7 +122,7 @@ contract ShiftVaultTest is Test {
         _setupUser(USER, INITIAL_BALANCE, depositAmount);
         vault.deposit(depositAmount);
         assertEq(vault.balanceOf(USER), (INITIAL_BALANCE + depositAmount) * 1e12);
-        assertEq(token.balanceOf(address(vault)), INITIAL_BALANCE + depositAmount);
+        assertEq(token.balanceOf(EXECUTOR), INITIAL_BALANCE + depositAmount);
     }
 
     /// @notice Tests that a double withdraw reverts as expected

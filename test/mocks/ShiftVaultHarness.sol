@@ -10,12 +10,13 @@ contract ShiftVaultHarness is ShiftVault {
         address _token,
         address _tvlFeed,
         address _feeCollector,
+        address _executor,
         string memory _shareName,
         string memory _shareSymbol,
         uint256 _minDeposit,
         uint256 _maxTvl,
         uint32 _timelock
-    ) ShiftVault(_access, _token, _tvlFeed, _feeCollector, _shareName, _shareSymbol, _minDeposit, _maxTvl, _timelock) {}
+    ) ShiftVault(_access, _token, _tvlFeed, _feeCollector, _executor, _shareName, _shareSymbol, _minDeposit, _maxTvl, _timelock) {}
 
     function exposed_calcSharesFromToken(uint256 _amount, uint256 _tvlIndex) external view returns (uint256) {
         return _calcSharesFromToken(_amount, _tvlIndex);

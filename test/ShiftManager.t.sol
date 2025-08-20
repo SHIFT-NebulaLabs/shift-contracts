@@ -10,14 +10,15 @@ contract ShiftManagerTest is Test {
     ShiftManagerHarness manager;
     address constant ADMIN = address(1);
     address constant FEE_COLLECTOR = address(2);
-    address constant USER = address(3);
+    address constant EXECUTOR = address(3);
+    address constant USER = address(4);
 
     /// @notice Sets up the test environment before each test
     function setUp() public {
         access = new MockAccessControl();
         access.grantRole(0x00, ADMIN);
         vm.prank(ADMIN);
-        manager = new ShiftManagerHarness(address(access), FEE_COLLECTOR, 1 ether, 100 ether, 1 days);
+        manager = new ShiftManagerHarness(address(access), FEE_COLLECTOR, EXECUTOR, 1 ether, 100 ether, 1 days);
     }
 
     /// @notice Tests the pause and release flow for the contract

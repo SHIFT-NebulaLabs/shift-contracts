@@ -12,6 +12,7 @@ contract DeployShiftVault is Script {
         address tokenContract = vm.envAddress("TOKEN_CONTRACT");
         address tvlFeed = vm.envAddress("TVL_FEED_CONTRACT");
         address feeCollector = vm.envAddress("FEE_COLLECTOR_EOA");
+        address executor = vm.envAddress("EXECUTOR_EOA");
         string memory shareName = vm.envString("LP_TOKEN_NAME");
         string memory shareSymbol = vm.envString("LP_TOKEN_SYMBOL");
         uint256 minTokenDeposit = vm.envUint("MIN_TOKEN_DEPOSIT");
@@ -19,7 +20,7 @@ contract DeployShiftVault is Script {
         uint32 withdrawalDelay = uint32(vm.envUint("WITHDRAWAL_DELAY"));
 
         new ShiftVault(
-            accessControl, tokenContract, tvlFeed, feeCollector, shareName, shareSymbol, minTokenDeposit, maxTvlAllowance, withdrawalDelay
+            accessControl, tokenContract, tvlFeed, feeCollector, executor, shareName, shareSymbol, minTokenDeposit, maxTvlAllowance, withdrawalDelay
         );
 
         vm.stopBroadcast();
