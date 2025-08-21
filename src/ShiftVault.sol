@@ -62,14 +62,16 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
      *   - shareSymbol: Symbol of the ERC20 LP share token.
      *   - managerArgs: Arguments for the ShiftManager base contract.
      */
-    constructor(ShiftVaultArgs memory _args) ShiftManager(_args.managerArgs) ERC20(_args.shareName, _args.shareSymbol) {
+    constructor(ShiftVaultArgs memory _args)
+        ShiftManager(_args.managerArgs)
+        ERC20(_args.shareName, _args.shareSymbol)
+    {
         require(_args.tokenContract != address(0), "ShiftVault: zero token address");
         require(_args.tvlFeedContract != address(0), "ShiftVault: zero TVL feed address");
 
         baseToken = ERC20(_args.tokenContract);
         tvlFeed = IShiftTvlFeed(_args.tvlFeedContract);
         require(baseToken.decimals() <= 18, "ShiftVault: base token decimals > 18");
-        require(tvlFeed.decimals() <= 18, "ShiftVault: TVL feed decimals > 18");
 
         batchWithdrawStates[currentBatchId].rate = 1;
         currentBatchId = 1;
@@ -387,7 +389,11 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
     /// @param _tvl18pt The TVL at the time of deposit, normalized to 18 decimals.
     /// @param _supplySnapshot The total supply snapshot at the time of deposit.
     /// @return The number of shares to mint (18 decimals).
-    function _calcSharesFromToken(uint256 _baseToken18pt, uint256 _tvl18pt, uint256 _supplySnapshot) internal pure returns (uint256) {
+    function _calcSharesFromToken(uint256 _baseToken18pt, uint256 _tvl18pt, uint256 _supplySnapshot)
+        internal
+        pure
+        returns (uint256)
+    {
         return _supplySnapshot > 0 ? _calcShare(_baseToken18pt, _tvl18pt, _supplySnapshot) : _baseToken18pt;
     }
 

@@ -10,7 +10,6 @@ import "../src/utils/Struct.sol";
 
 contract DeployShiftProtocol_Testnet is Script {
     function run() external {
-
         uint256 initialSupply = 1_000_000 * 1e6;
         address admin = vm.envAddress("ADMIN_EOA");
         address feeCollector = vm.envAddress("FEE_COLLECTOR_EOA");

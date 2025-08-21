@@ -8,7 +8,11 @@ import {ShiftVaultArgs} from "../../src/utils/Struct.sol";
 contract ShiftVaultHarness is ShiftVault {
     constructor(ShiftVaultArgs memory _args) ShiftVault(_args) {}
 
-    function exposed_calcSharesFromToken(uint256 _amount18pt, uint256 _tvl18pt, uint256 _supplySnapshot) external pure returns (uint256) {
+    function exposed_calcSharesFromToken(uint256 _amount18pt, uint256 _tvl18pt, uint256 _supplySnapshot)
+        external
+        pure
+        returns (uint256)
+    {
         return _calcSharesFromToken(_amount18pt, _tvl18pt, _supplySnapshot);
     }
 

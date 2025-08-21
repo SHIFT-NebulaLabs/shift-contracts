@@ -7,7 +7,6 @@ import "../src/utils/Struct.sol";
 
 contract DeployShiftVault is Script {
     function run() external {
-
         address accessControl = vm.envAddress("ACCESS_CONTROL_CONTRACT");
         address tokenContract = vm.envAddress("TOKEN_CONTRACT");
         address tvlFeed = vm.envAddress("TVL_FEED_CONTRACT");

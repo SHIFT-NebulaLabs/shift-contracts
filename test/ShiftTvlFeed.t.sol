@@ -4,9 +4,16 @@ pragma solidity ^0.8.28;
 import "forge-std/Test.sol";
 import "./mocks/MockAccessControl.sol";
 import "./mocks/ShiftTvlFeedHarness.sol";
+import "./mocks/MockERC20.sol";
 
 /// @notice MockVault simulates a vault for test purposes
 contract MockVault {
+    MockERC20 public baseToken;
+
+    constructor(address _baseToken) {
+        baseToken = MockERC20(_baseToken);
+    }
+
     function allowDeposit(address, uint256) external {}
 
     function totalSupply() external pure returns (uint256) {
@@ -19,8 +26,10 @@ contract ShiftTvlFeedTest is Test {
     MockAccessControl access;
     ShiftTvlFeedHarness tvlFeed;
     MockVault mockVault;
+    MockERC20 baseToken;
     address constant ADMIN = address(1);
     address constant ORACLE = address(2);
+    uint8 constant DECIMALS = 6;
 
     /// @notice Setup: deploys mocks and initializes the contract under test
     function setUp() public {
@@ -29,7 +38,8 @@ contract ShiftTvlFeedTest is Test {
         access.grantRole(keccak256("ORACLE_ROLE"), ORACLE);
 
         tvlFeed = new ShiftTvlFeedHarness(address(access));
-        mockVault = new MockVault();
+        baseToken = new MockERC20(DECIMALS);
+        mockVault = new MockVault(address(baseToken));
 
         vm.prank(ADMIN);
         tvlFeed.initialize(address(mockVault));
@@ -42,6 +52,12 @@ contract ShiftTvlFeedTest is Test {
         tvlFeed.initialize(address(mockVault));
         assertEq(address(tvlFeed.shiftVault()), address(mockVault));
         assertTrue(tvlFeed.init());
+    }
+    /// @notice Tests that decimals() returns the correct number of decimal places
+
+    function testDecimalPlaces() public view {
+        assertEq(tvlFeed.decimals(), DECIMALS);
+        assertEq(tvlFeed.decimals(), baseToken.decimals());
     }
 
     /// @notice Tests that initialize reverts if already initialized

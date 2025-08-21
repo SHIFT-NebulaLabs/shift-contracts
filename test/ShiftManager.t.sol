@@ -28,7 +28,7 @@ contract ShiftManagerTest is Test {
             maxTvl: 100 ether,
             timelock: 1 days
         });
-        
+
         manager = new ShiftManagerHarness(args);
     }
 

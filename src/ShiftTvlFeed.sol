@@ -57,9 +57,9 @@ contract ShiftTvlFeed is AccessModifier {
     }
 
     /// @notice Number of decimals for TVL values.
-    /// @return Number of decimals (6).
-    function decimals() external pure returns (uint8) {
-        return 6;
+    /// @return Number of decimals.
+    function decimals() external view returns (uint8) {
+        return shiftVault.baseToken().decimals();
     }
 
     /// @notice Get last TVL entry.
