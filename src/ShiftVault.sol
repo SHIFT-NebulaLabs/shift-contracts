@@ -89,7 +89,7 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
     function reqDeposit() external nonReentrant notPaused {
         require(isWhitelisted[msg.sender] || !whitelistEnabled, "ShiftVault: not whitelisted");
         DepositState storage state = userDepositStates[msg.sender];
-        if (_isExpired()) state.isPriceUpdated = false; // Reset if expired, to allow new request
+        if (_isExpired()) delete userDepositStates[msg.sender]; // Reset if expired, to allow new request
 
         require(!state.isPriceUpdated, "ShiftVault: deposit request already exists");
         require(_isExpired(), "ShiftVault: deposit request still valid");
@@ -106,8 +106,8 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
         require(state.isPriceUpdated && !_isExpired(), "ShiftVault: no valid deposit request");
 
         // Reset state before external call for safety
-        state.isPriceUpdated = false;
-        state.expirationTime = 0;
+        uint256 requestIndex = state.requestIndex;
+        delete userDepositStates[msg.sender];
 
         // Handle fee-on-transfer tokens efficiently
         uint256 balanceBefore = baseToken.balanceOf(executor);
@@ -115,7 +115,7 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
         uint256 actualAmount = baseToken.balanceOf(executor) - balanceBefore;
         require(actualAmount > 0, "ShiftVault: zero actual deposit");
 
-        IShiftTvlFeed.TvlData memory tvl = tvlFeed.getTvlEntry(state.requestIndex);
+        IShiftTvlFeed.TvlData memory tvl = tvlFeed.getTvlEntry(requestIndex);
         // Normalize values once for efficiency
         (uint256 tvl18pt,) = _normalize(tvl.value, tvlFeed.decimals());
         (uint256 maxTvl18pt,) = _normalize(maxTvl, tvlFeed.decimals());
@@ -178,9 +178,7 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
         require(tokenAmount > 0, "ShiftVault: zero token calculated");
 
         // Effects: update state before external calls
-        userState.sharesAmount = 0;
-        userState.batchId = 0;
-        userState.requestedAt = 0;
+        delete userWithdrawStates[msg.sender];
 
         availableForWithdraw -= tokenAmount;
         cumulativeWithdrawn += tokenAmount;
@@ -210,9 +208,7 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
         _transfer(address(this), msg.sender, userState.sharesAmount);
 
         // Reset user state
-        userState.sharesAmount = 0;
-        userState.batchId = 0;
-        userState.requestedAt = 0;
+        delete userWithdrawStates[msg.sender];
     }
 
     // =========================
