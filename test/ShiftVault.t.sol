@@ -365,6 +365,7 @@ contract ShiftVaultTest is Test {
 
     // --- Admin Functions ---
 
+    /// @notice Tests that the admin can sweep dust tokens from the vault to the fee collector
     function testSweepDust() public {
         vm.startPrank(ADMIN);
         deal(address(token), address(vault), 10);
@@ -373,6 +374,7 @@ contract ShiftVaultTest is Test {
         vm.stopPrank();
     }
 
+    /// @notice Tests that only the dust (excess tokens) is swept to the fee collector, not user funds
     function testSweepOnlyDust() public {
         _setupUser(USER, 0, INITIAL_BALANCE);
         vault.deposit(5_000_000);
