@@ -234,12 +234,11 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
 
     /// @notice Claim maintenance fee. Only admin.
     function claimMaintenanceFee() public onlyAdmin {
+        IShiftTvlFeed.TvlData memory lastTvl = tvlFeed.getLastTvl();
+        if (lastTvl.value == 0 && lastTvl.supplySnapshot == 0) return; // During initial setup
         uint256 lastClaimed = lastMaintenanceFeeClaimedAt;
         uint256 nowTs = block.timestamp;
-        IShiftTvlFeed.TvlData memory lastTvl = tvlFeed.getLastTvl();
         require(nowTs - lastTvl.timestamp < FRESHNESS_VALIDITY, "ShiftVault: stale TVL data");
-        if (lastTvl.value == 0 && lastTvl.supplySnapshot == 0) return; // During initial setup
-
         require(nowTs > lastClaimed, "ShiftVault: already claimed for this period");
 
         lastMaintenanceFeeClaimedAt = nowTs;
