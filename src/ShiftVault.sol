@@ -19,7 +19,6 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
     ERC20 public immutable baseToken;
     IShiftTvlFeed public immutable tvlFeed;
 
-    uint256 public activeUsers;
     uint256 public availableForWithdraw;
     uint256 internal cumulativeDeposit;
     uint256 internal cumulativeWithdrawn;
@@ -130,12 +129,6 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
 
         cumulativeDeposit += actualAmount;
 
-        // Only increment activeUsers if this is the user's first deposit
-        if (balanceOf(msg.sender) == shares) {
-            unchecked {
-                ++activeUsers;
-            }
-        }
         emit Deposited(msg.sender, actualAmount);
     }
 
@@ -184,12 +177,6 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
         cumulativeWithdrawn += tokenAmount;
 
         _burn(address(this), shares);
-
-        if (balanceOf(msg.sender) == 0 && activeUsers > 0) {
-            unchecked {
-                --activeUsers;
-            }
-        }
 
         // Interactions
         baseToken.safeTransfer(msg.sender, tokenAmount);
