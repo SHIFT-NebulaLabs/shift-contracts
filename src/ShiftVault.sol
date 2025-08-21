@@ -33,6 +33,9 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
     event DepositRequested(address indexed user);
     event DepositAllowed(address indexed user, uint256 expirationTime);
     event Deposited(address indexed user, uint256 amount);
+    event WithdrawRequested(address indexed user, uint256 shareAmount);
+    event Withdrawn(address indexed user, uint256 amount);
+    event WithdrawCanceled(address indexed user, uint256 shareAmount);
 
     struct DepositState {
         bool isPriceUpdated;
@@ -147,6 +150,8 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
         userState.batchId = currentBatchId;
         userState.requestedAt = block.timestamp;
         userState.timelock = timelock;
+
+        emit WithdrawRequested(msg.sender, _shareAmount);
     }
 
     /// @notice Withdraw tokens after batch resolved and timelock passed.
@@ -175,6 +180,8 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
 
         // Interactions
         baseToken.safeTransfer(msg.sender, tokenAmount);
+
+        emit Withdrawn(msg.sender, tokenAmount);
     }
 
     /// @notice Cancel a pending withdrawal request if batch not processed.
@@ -191,6 +198,8 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
 
         // Reset user state
         delete userWithdrawStates[msg.sender];
+
+        emit WithdrawCanceled(msg.sender, userState.sharesAmount);
     }
 
     // =========================
@@ -368,8 +377,8 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
      */
     function getSharePrice() external view returns (uint256) {
         IShiftTvlFeed.TvlData memory lastTvl = tvlFeed.getLastTvl();
-        if(block.timestamp - lastTvl.timestamp > freshness) return 0; // Return 0 if TVL data is stale
-        
+        if (block.timestamp - lastTvl.timestamp > freshness) return 0; // Return 0 if TVL data is stale
+
         (uint256 tvl18pt, uint8 tvlScaleFactor) = _normalize(lastTvl.value, tvlFeed.decimals());
 
         if (lastTvl.supplySnapshot == 0) return 0;
