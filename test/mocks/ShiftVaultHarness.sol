@@ -3,7 +3,7 @@ pragma solidity ^0.8.28;
 
 import "../../src/ShiftVault.sol";
 import {IShiftTvlFeed} from "../../src/interface/IShiftTvlFeed.sol";
-import {ShiftVaultArgs} from "../../src/utils/Struct.sol";
+import {ShiftVaultArgs} from "../../src/utils/Structs.sol";
 
 contract ShiftVaultHarness is ShiftVault {
     constructor(ShiftVaultArgs memory _args) ShiftVault(_args) {}

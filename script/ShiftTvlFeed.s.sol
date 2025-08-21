@@ -6,11 +6,9 @@ import "../src/ShiftTvlFeed.sol";
 
 contract DeployShiftTvlFeed is Script {
     function run() external {
-        address accessControl = vm.envAddress("ACCESS_CONTROL_CONTRACT");
-
         vm.startBroadcast();
 
-        new ShiftTvlFeed(accessControl);
+        new ShiftTvlFeed(vm.envAddress("ACCESS_CONTROL_CONTRACT"));
 
         vm.stopBroadcast();
     }

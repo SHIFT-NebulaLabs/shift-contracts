@@ -6,7 +6,7 @@ import "./mocks/MockAccessControl.sol";
 import "./mocks/MockERC20.sol";
 import "../src/ShiftTvlFeed.sol";
 import "./mocks/ShiftVaultHarness.sol";
-import {ShiftVaultArgs, ShiftManagerArgs} from "../src/utils/Struct.sol";
+import {ShiftVaultArgs, ShiftManagerArgs} from "../src/utils/Structs.sol";
 
 contract ShiftVaultTest is Test {
     MockAccessControl access;
@@ -52,7 +52,9 @@ contract ShiftVaultTest is Test {
                 executor: EXECUTOR,
                 minDeposit: MIN_DEPOSIT,
                 maxTvl: 1_000_000_000e6, // 1 billion
-                timelock: 1 days
+                timelock: 1 days,
+                freshness: 90 minutes,
+                requestValidity: 120
             })
         });
 

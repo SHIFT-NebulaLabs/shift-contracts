@@ -2,7 +2,7 @@
 pragma solidity ^0.8.28;
 
 import {AccessModifier} from "./utils/AccessModifier.sol";
-import {ShiftManagerArgs} from "./utils/Struct.sol";
+import {ShiftManagerArgs} from "./utils/Structs.sol";
 import {SECONDS_IN_YEAR} from "./utils/Constants.sol";
 
 /// @title ShiftManager
@@ -12,13 +12,15 @@ abstract contract ShiftManager is AccessModifier {
     bool public whitelistEnabled = true;
     bool public paused = true;
 
-    uint32 public timelock;
-    uint256 public minDepositAmount;
-    uint256 public maxTvl;
     address public feeCollector;
     address public executor;
+    uint256 public minDepositAmount;
+    uint256 public maxTvl;
     uint256 public performanceFee18pt; // 1% = 0.01 * 10^18
     uint256 public maintenanceFeePerSecond18pt; // 1% = 0.01 * 10^18
+    uint32 public timelock;
+    uint16 public freshness;
+    uint16 public requestValidity;
 
     mapping(address => bool) internal isWhitelisted;
 
@@ -43,12 +45,16 @@ abstract contract ShiftManager is AccessModifier {
         require(_args.feeCollector != address(0), "ShiftManager: zero fee collector");
         require(_args.executor != address(0), "ShiftManager: zero executor");
         require(_args.timelock > 0, "ShiftManager: zero timelock");
+        require(_args.freshness > 0, "ShiftManager: zero freshness");
+        require(_args.requestValidity > 0, "ShiftManager: zero request validity");
         _validateDepositAndTvl(_args.minDeposit, _args.maxTvl);
         feeCollector = _args.feeCollector;
         executor = _args.executor;
         minDepositAmount = _args.minDeposit;
         maxTvl = _args.maxTvl;
         timelock = _args.timelock;
+        freshness = _args.freshness;
+        requestValidity = _args.requestValidity;
     }
 
     /// @notice Update maximum total value locked (TVL).
@@ -109,6 +115,8 @@ abstract contract ShiftManager is AccessModifier {
         feeCollector = _newFeeCollector;
     }
 
+    /// @notice Update executor address.
+    /// @param _newExecutor New executor address.
     function updateExecutor(address _newExecutor) external onlyAdmin {
         require(_newExecutor != address(0), "ShiftManager: zero executor");
         executor = _newExecutor;
@@ -119,6 +127,20 @@ abstract contract ShiftManager is AccessModifier {
     function updateTimelock(uint32 _newTimelock) external onlyAdmin {
         require(_newTimelock > 0 && _newTimelock <= 30 days, "ShiftManager: invalid timelock");
         timelock = _newTimelock;
+    }
+
+    /// @notice Updates the freshness parameter, which determines the data validity.
+    /// @param _newFreshness New freshness value.
+    function updateFreshness(uint16 _newFreshness) external onlyAdmin {
+        require(_newFreshness > 0, "ShiftManager: zero freshness");
+        freshness = _newFreshness;
+    }
+
+    /// @notice Update request validity duration.
+    /// @param _newRequestValidity New request validity value.
+    function updateRequestValidity(uint16 _newRequestValidity) external onlyAdmin {
+        require(_newRequestValidity > 0, "ShiftManager: zero request validity");
+        requestValidity = _newRequestValidity;
     }
 
     /// @notice Update minimum deposit amount.

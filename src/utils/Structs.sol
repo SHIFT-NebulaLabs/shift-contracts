@@ -16,12 +16,14 @@ struct ShiftVaultArgs {
 }
 
 /// @dev Struct containing configuration parameters for the Shift Manager.
-/// @param accessControlContract Address of the contract managing access control.
-/// @param feeCollector Address designated to collect protocol fees.
-/// @param executor Address authorized to execute vault operations.
-/// @param minDeposit Minimum deposit amount allowed in the vault.
-/// @param maxTvl Maximum total value locked allowed in the vault.
-/// @param timelock Timelock duration (in seconds) for sensitive operations.
+/// @param accessControlContract The address of the contract responsible for managing access control and permissions.
+/// @param feeCollector The address designated to collect protocol fees accrued by the vault.
+/// @param executor The address authorized to execute vault operations and manage vault activities.
+/// @param minDeposit The minimum deposit amount (in wei) allowed in the vault.
+/// @param maxTvl The maximum total value locked (TVL, in wei) permitted in the vault.
+/// @param timelock The timelock duration (in seconds) required for executing sensitive operations.
+/// @param freshness The maximum allowed age (in seconds) for data or price feeds to be considered valid.
+/// @param requestValidity The duration (in seconds) for which a request remains valid before expiration.
 struct ShiftManagerArgs {
     address accessControlContract;
     address feeCollector;
@@ -29,4 +31,6 @@ struct ShiftManagerArgs {
     uint256 minDeposit;
     uint256 maxTvl;
     uint32 timelock;
+    uint16 freshness;
+    uint16 requestValidity;
 }

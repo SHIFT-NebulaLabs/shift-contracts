@@ -8,8 +8,7 @@ import {UD60x18, ud} from "@prb/math/src/UD60x18.sol";
 import {IShiftTvlFeed} from "./interface/IShiftTvlFeed.sol";
 import {AccessModifier} from "./utils/AccessModifier.sol";
 import {ShiftManager} from "./ShiftManager.sol";
-import {ShiftVaultArgs} from "./utils/Struct.sol";
-import {REQUEST_VALIDITY, FRESHNESS_VALIDITY} from "./utils/Constants.sol";
+import {ShiftVaultArgs} from "./utils/Structs.sol";
 
 /// @title ShiftVault
 /// @notice Manages liquidity and vault operations for the Shift protocol.
@@ -91,7 +90,7 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
         require(!state.isPriceUpdated, "ShiftVault: deposit request already exists");
         require(_isExpired(), "ShiftVault: deposit request still valid");
 
-        state.expirationTime = block.timestamp + uint256(REQUEST_VALIDITY);
+        state.expirationTime = block.timestamp + uint256(requestValidity);
         emit DepositRequested(msg.sender);
     }
 
@@ -222,7 +221,7 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
         if (lastTvl.value == 0 && lastTvl.supplySnapshot == 0) return; // During initial setup
         uint256 lastClaimed = lastMaintenanceFeeClaimedAt;
         uint256 nowTs = block.timestamp;
-        require(nowTs - lastTvl.timestamp < FRESHNESS_VALIDITY, "ShiftVault: stale TVL data");
+        require(nowTs - lastTvl.timestamp < freshness, "ShiftVault: stale TVL data");
         require(nowTs > lastClaimed, "ShiftVault: already claimed for this period");
 
         lastMaintenanceFeeClaimedAt = nowTs;
@@ -238,7 +237,7 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
     function claimPerformanceFee() public onlyAdmin {
         IShiftTvlFeed.TvlData memory lastTvl = tvlFeed.getLastTvl();
         if (lastTvl.value == 0 && lastTvl.supplySnapshot == 0) return; // During initial setup
-        require(block.timestamp - lastTvl.timestamp < FRESHNESS_VALIDITY, "ShiftVault: stale TVL data");
+        require(block.timestamp - lastTvl.timestamp < freshness, "ShiftVault: stale TVL data");
 
         (uint256 tvl18pt,) = _normalize(lastTvl.value, tvlFeed.decimals());
         uint256 feeAmount = _calcPerformanceFee(tvl18pt);
@@ -267,7 +266,7 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
     /// @param _amount New maximum TVL value.
     function updateMaxTvl(uint256 _amount) public override onlyAdmin {
         IShiftTvlFeed.TvlData memory lastTvl = tvlFeed.getLastTvl();
-        require(block.timestamp - lastTvl.timestamp < FRESHNESS_VALIDITY, "ShiftVault: stale TVL data");
+        require(block.timestamp - lastTvl.timestamp < freshness, "ShiftVault: stale TVL data");
         require(_amount >= lastTvl.value, "ShiftVault: new max TVL below current TVL");
 
         super.updateMaxTvl(_amount);
@@ -370,7 +369,7 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
      */
     function getSharePrice() external view returns (uint256) {
         IShiftTvlFeed.TvlData memory lastTvl = tvlFeed.getLastTvl();
-        require(block.timestamp - lastTvl.timestamp < FRESHNESS_VALIDITY, "ShiftVault: stale TVL data");
+        require(block.timestamp - lastTvl.timestamp < freshness, "ShiftVault: stale TVL data");
         (uint256 tvl18pt, uint8 tvlScaleFactor) = _normalize(lastTvl.value, tvlFeed.decimals());
 
         if (lastTvl.supplySnapshot == 0) return 0;

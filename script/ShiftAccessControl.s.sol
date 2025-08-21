@@ -8,9 +8,7 @@ contract DeployShiftAccessControl is Script {
     function run() external {
         vm.startBroadcast();
 
-        address admin = vm.envAddress("ADMIN_EOA");
-
-        new ShiftAccessControl(admin);
+        new ShiftAccessControl(vm.envAddress("ADMIN_EOA"));
 
         vm.stopBroadcast();
     }

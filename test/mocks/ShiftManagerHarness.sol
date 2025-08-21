@@ -2,7 +2,7 @@
 pragma solidity ^0.8.28;
 
 import "../../src/ShiftManager.sol";
-import {ShiftManagerArgs} from "../../src/utils/Struct.sol";
+import {ShiftManagerArgs} from "../../src/utils/Structs.sol";
 
 contract ShiftManagerHarness is ShiftManager {
     constructor(ShiftManagerArgs memory _args) ShiftManager(_args) {}

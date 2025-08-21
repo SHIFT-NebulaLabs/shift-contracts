@@ -4,7 +4,7 @@ pragma solidity ^0.8.28;
 import "forge-std/Test.sol";
 import "./mocks/MockAccessControl.sol";
 import "./mocks/ShiftManagerHarness.sol";
-import {ShiftManagerArgs} from "../src/utils/Struct.sol";
+import {ShiftManagerArgs} from "../src/utils/Structs.sol";
 
 contract ShiftManagerTest is Test {
     MockAccessControl access;
@@ -26,7 +26,9 @@ contract ShiftManagerTest is Test {
             executor: EXECUTOR,
             minDeposit: 1 ether,
             maxTvl: 100 ether,
-            timelock: 1 days
+            timelock: 1 days,
+            freshness: 90 minutes,
+            requestValidity: 120
         });
 
         manager = new ShiftManagerHarness(args);
@@ -71,6 +73,34 @@ contract ShiftManagerTest is Test {
         assertFalse(manager.exposed_isWhitelisted(USER));
     }
 
+    /// @notice Tests updating the executor address
+    function testUpdateExecutor() public {
+        vm.startPrank(ADMIN);
+        manager.updateExecutor(address(0xBEEF));
+        assertEq(manager.executor(), address(0xBEEF));
+    }
+
+    /// @notice Tests the updateTimelock function by updating the timelock duration to 2 days.
+    function testUpdateTimelock() public {
+        vm.startPrank(ADMIN);
+        manager.updateTimelock(2 days);
+        assertEq(manager.timelock(), 2 days);
+    }
+
+    /// @notice Tests updating the freshness duration
+    function testUpdatedFreshness() public {
+        vm.startPrank(ADMIN);
+        manager.updateFreshness(2 hours);
+        assertEq(manager.freshness(), 2 hours);
+    }
+
+    /// @notice Tests updating the request validity duration
+    function testUpdateRequestValidity() public {
+        vm.startPrank(ADMIN);
+        manager.updateRequestValidity(60);
+        assertEq(manager.requestValidity(), 60);
+    }
+
     /// @notice Tests updating fee parameters and checks for expected reverts on invalid values
     function testFeeParamsUpdateAndRevert() public {
         vm.startPrank(ADMIN);
@@ -90,10 +120,16 @@ contract ShiftManagerTest is Test {
         manager.updateFeeCollector(address(0));
 
         vm.expectRevert();
-        manager.updateTimelock(0);
+        manager.updateExecutor(address(0));
 
         vm.expectRevert();
         manager.updateTimelock(0);
+
+        vm.expectRevert();
+        manager.updateFreshness(0);
+
+        vm.expectRevert();
+        manager.updateFreshness(0);
 
         vm.expectRevert();
         manager.updateTimelock(31 days);
