@@ -345,7 +345,7 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
 
         uint256 batchId = userState.batchId;
         uint256 rate = batchWithdrawStates[batchId].rate;
-        uint256 unlkTime = userState.requestedAt + uint256(timelock);
+        uint256 unlkTime = userState.requestedAt + userState.timelock;
 
         if (rate == 0) return (1, shares, 0, unlkTime); // Pending batch resolution
 
