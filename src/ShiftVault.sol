@@ -198,7 +198,7 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
     }
 
     // =========================
-    // Admin / Oracle functions
+    // Oracle functions
     // =========================
 
     /// @notice Called by TVL feed to allow user deposit after price update.
@@ -213,6 +213,10 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
         state.requestIndex = _tvlIndex;
         emit DepositAllowed(_user, state.expirationTime);
     }
+
+    // =========================
+    // Admin functions
+    // =========================
 
     /// @notice Claim maintenance fee. Only admin.
     function claimMaintenanceFee() public onlyAdmin {
@@ -246,6 +250,17 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
         cumulativeDeposit = 0;
         cumulativeWithdrawn = 0;
         _mint(feeCollector, share);
+    }
+
+    /// @notice Sweep any excess base tokens (dust) from the vault to the fee collector. Only admin.
+    /// @dev Transfers any base tokens held by the vault contract that are not reserved for withdrawals
+    /// @dev All deposits are directly transferred to the executor
+    function sweepDust() public onlyAdmin {
+        // Sweep dust (small amounts of tokens) from the vault to the fee collector
+        require(baseToken.balanceOf(address(this)) > availableForWithdraw, "ShiftVault: no dust to sweep");
+
+        uint256 dustAmount = baseToken.balanceOf(address(this)) - availableForWithdraw;
+        baseToken.safeTransfer(feeCollector, dustAmount);
     }
 
     // Overridden functions

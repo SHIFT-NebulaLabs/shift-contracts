@@ -356,7 +356,43 @@ contract ShiftVaultTest is Test {
         assertEq(fee, expectedFee);
     }
 
+    // --- Admin Functions ---
+
+    function testSweepDust() public {
+        vm.startPrank(ADMIN);
+        deal(address(token), address(vault), 10);
+        vault.sweepDust();
+        assertEq(token.balanceOf(FEE_COLLECTOR), 10);
+        vm.stopPrank();
+    }
+
+    function testSweepOnlyDust() public {
+        _setupUser(USER, 0, INITIAL_BALANCE);
+        vault.deposit(5_000_000);
+        uint256 shares = vault.balanceOf(USER);
+        vault.reqWithdraw(shares);
+        vm.stopPrank();
+
+        vm.startPrank(EXECUTOR);
+        vault.processWithdraw();
+        token.approve(address(vault), 5_000_000);
+        vault.resolveWithdraw(5_000_000, 1_000_000);
+        vm.stopPrank();
+
+        vm.startPrank(ADMIN);
+        deal(address(token), address(vault), 5_000_010);
+        vault.sweepDust();
+        assertEq(token.balanceOf(FEE_COLLECTOR), 10);
+        vm.stopPrank();
+    }
+
     // --- Revert/Negative Tests ---
+
+    function testSweepDustReverts() public {
+        vm.prank(ADMIN);
+        vm.expectRevert("ShiftVault: no dust to sweep");
+        vault.sweepDust();
+    }
 
     function testUpdateMaxTvlReverts() public {
         vm.prank(ADMIN);
