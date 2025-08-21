@@ -114,10 +114,9 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
         IShiftTvlFeed.TvlData memory tvl = tvlFeed.getTvlEntry(requestIndex);
         // Normalize values once for efficiency
         (uint256 tvl18pt,) = _normalize(tvl.value, tvlFeed.decimals());
-        (uint256 maxTvl18pt,) = _normalize(maxTvl, tvlFeed.decimals());
         (uint256 baseToken18pt,) = _normalize(actualAmount, baseToken.decimals());
 
-        require(tvl18pt + baseToken18pt <= maxTvl18pt, "ShiftVault: exceeds max TVL");
+        require(tvl.value + actualAmount <= maxTvl, "ShiftVault: exceeds max TVL");
 
         uint256 shares = _calcSharesFromToken(baseToken18pt, tvl18pt, tvl.supplySnapshot);
 
