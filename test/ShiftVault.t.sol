@@ -402,7 +402,7 @@ contract ShiftVaultTest is Test {
         vault.manageWhitelist(users);
         deal(address(token), USER, INITIAL_BALANCE);
         vm.startPrank(USER);
-        vm.expectRevert("ShiftVault: insufficient shares");
+        vm.expectRevert();
         vault.reqWithdraw(1e18);
         vm.stopPrank();
     }

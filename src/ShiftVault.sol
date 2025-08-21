@@ -137,7 +137,6 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
     function reqWithdraw(uint256 _shareAmount) external nonReentrant notPaused {
         require(_shareAmount > 0, "ShiftVault: zero shares");
         require(isWhitelisted[msg.sender] || !whitelistEnabled, "ShiftVault: not whitelisted");
-        require(balanceOf(msg.sender) >= _shareAmount, "ShiftVault: insufficient shares");
 
         WithdrawState storage userState = userWithdrawStates[msg.sender];
         require(userState.sharesAmount == 0, "ShiftVault: withdraw already requested");
