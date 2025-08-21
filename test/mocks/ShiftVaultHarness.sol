@@ -3,33 +3,10 @@ pragma solidity ^0.8.28;
 
 import "../../src/ShiftVault.sol";
 import {IShiftTvlFeed} from "../../src/interface/IShiftTvlFeed.sol";
+import {ShiftVaultArgs} from "../../src/utils/Struct.sol";
 
 contract ShiftVaultHarness is ShiftVault {
-    constructor(
-        address _access,
-        address _token,
-        address _tvlFeed,
-        address _feeCollector,
-        address _executor,
-        string memory _shareName,
-        string memory _shareSymbol,
-        uint256 _minDeposit,
-        uint256 _maxTvl,
-        uint32 _timelock
-    )
-        ShiftVault(
-            _access,
-            _token,
-            _tvlFeed,
-            _feeCollector,
-            _executor,
-            _shareName,
-            _shareSymbol,
-            _minDeposit,
-            _maxTvl,
-            _timelock
-        )
-    {}
+    constructor(ShiftVaultArgs memory _args) ShiftVault(_args) {}
 
     function exposed_calcSharesFromToken(uint256 _amount18pt, uint256 _tvl18pt, uint256 _supplySnapshot) external pure returns (uint256) {
         return _calcSharesFromToken(_amount18pt, _tvl18pt, _supplySnapshot);

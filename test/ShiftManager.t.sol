@@ -4,6 +4,7 @@ pragma solidity ^0.8.28;
 import "forge-std/Test.sol";
 import "./mocks/MockAccessControl.sol";
 import "./mocks/ShiftManagerHarness.sol";
+import {ShiftManagerArgs} from "../src/utils/Struct.sol";
 
 contract ShiftManagerTest is Test {
     MockAccessControl access;
@@ -18,7 +19,17 @@ contract ShiftManagerTest is Test {
         access = new MockAccessControl();
         access.grantRole(0x00, ADMIN);
         vm.prank(ADMIN);
-        manager = new ShiftManagerHarness(address(access), FEE_COLLECTOR, EXECUTOR, 1 ether, 100 ether, 1 days);
+
+        ShiftManagerArgs memory args = ShiftManagerArgs({
+            accessControlContract: address(access),
+            feeCollector: FEE_COLLECTOR,
+            executor: EXECUTOR,
+            minDeposit: 1 ether,
+            maxTvl: 100 ether,
+            timelock: 1 days
+        });
+        
+        manager = new ShiftManagerHarness(args);
     }
 
     /// @notice Tests the pause and release flow for the contract

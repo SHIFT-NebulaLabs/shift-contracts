@@ -2,6 +2,7 @@
 pragma solidity ^0.8.28;
 
 import {AccessModifier} from "./utils/AccessModifier.sol";
+import {ShiftManagerArgs} from "./utils/Struct.sol";
 import {SECONDS_IN_YEAR} from "./utils/Constants.sol";
 
 /// @title ShiftManager
@@ -29,30 +30,25 @@ abstract contract ShiftManager is AccessModifier {
         _;
     }
 
-    /// @notice Contract initialization with required parameters.
-    /// @param _accessControlContract Address of access control contract.
-    /// @param _feeCollector Address that collects protocol fees.
-    /// @param _minDeposit Minimum allowed deposit.
-    /// @param _maxTvl Maximum total value locked.
-    /// @param _timeLock Timelock duration.
-    constructor(
-        address _accessControlContract,
-        address _feeCollector,
-        address _executor,
-        uint256 _minDeposit,
-        uint256 _maxTvl,
-        uint32 _timeLock
-    ) AccessModifier(_accessControlContract) {
-        require(_accessControlContract != address(0), "ShiftManager: zero access control");
-        require(_feeCollector != address(0), "ShiftManager: zero fee collector");
-        require(_executor != address(0), "ShiftManager: zero executor");
-        require(_timeLock > 0, "ShiftManager: zero timelock");
-        _validateDepositAndTvl(_minDeposit, _maxTvl);
-        feeCollector = _feeCollector;
-        executor = _executor;
-        minDepositAmount = _minDeposit;
-        maxTvl = _maxTvl;
-        timelock = _timeLock;
+    /// @notice Initializes the ShiftManager contract with protocol parameters.
+    /// @param _args Struct containing initialization parameters:
+    ///   - accessControlContract: Address of access control contract.
+    ///   - feeCollector: Address that collects protocol fees.
+    ///   - executor: Address authorized to execute certain actions.
+    ///   - minDeposit: Minimum allowed deposit.
+    ///   - maxTvl: Maximum total value locked.
+    ///   - timelock: Timelock duration.
+    constructor(ShiftManagerArgs memory _args) AccessModifier(_args.accessControlContract) {
+        require(_args.accessControlContract != address(0), "ShiftManager: zero access control");
+        require(_args.feeCollector != address(0), "ShiftManager: zero fee collector");
+        require(_args.executor != address(0), "ShiftManager: zero executor");
+        require(_args.timelock > 0, "ShiftManager: zero timelock");
+        _validateDepositAndTvl(_args.minDeposit, _args.maxTvl);
+        feeCollector = _args.feeCollector;
+        executor = _args.executor;
+        minDepositAmount = _args.minDeposit;
+        maxTvl = _args.maxTvl;
+        timelock = _args.timelock;
     }
 
     /// @notice Update maximum total value locked (TVL).

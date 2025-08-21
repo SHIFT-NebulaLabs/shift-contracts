@@ -6,6 +6,7 @@ import "./mocks/MockAccessControl.sol";
 import "./mocks/MockERC20.sol";
 import "../src/ShiftTvlFeed.sol";
 import "./mocks/ShiftVaultHarness.sol";
+import {ShiftVaultArgs, ShiftManagerArgs} from "../src/utils/Struct.sol";
 
 contract ShiftVaultTest is Test {
     MockAccessControl access;
@@ -39,18 +40,24 @@ contract ShiftVaultTest is Test {
         access.grantRole(ORACLE_ROLE, ORACLE);
         token = new MockERC20(6);
         tvlFeed = new ShiftTvlFeed(address(access));
-        vault = new ShiftVaultHarness(
-            address(access),
-            address(token),
-            address(tvlFeed),
-            FEE_COLLECTOR,
-            EXECUTOR,
-            SHARE_NAME,
-            SHARE_SYMBOL,
-            MIN_DEPOSIT,
-            1_000_000_000e6,
-            1 days
-        );
+
+        ShiftVaultArgs memory args = ShiftVaultArgs({
+            tokenContract: address(token),
+            tvlFeedContract: address(tvlFeed),
+            shareName: SHARE_NAME,
+            shareSymbol: SHARE_SYMBOL,
+            managerArgs: ShiftManagerArgs({
+                accessControlContract: address(access),
+                feeCollector: FEE_COLLECTOR,
+                executor: EXECUTOR,
+                minDeposit: MIN_DEPOSIT,
+                maxTvl: 1_000_000_000e6, // 1 billion
+                timelock: 1 days
+            })
+        });
+
+        vault = new ShiftVaultHarness(args);
+
         vm.startPrank(ADMIN);
         tvlFeed.initialize(address(vault));
         vault.updatePerformanceFee(PERFORMANCE_FEE);

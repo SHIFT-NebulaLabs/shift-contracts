@@ -6,19 +6,13 @@ import "../src/ShiftVault.sol";
 import "../src/ShiftAccessControl.sol";
 import "../src/ShiftTvlFeed.sol";
 import "../src/mocks/TestToken.sol";
+import "../src/utils/Struct.sol";
 
 contract DeployShiftProtocol_Testnet is Script {
     function run() external {
-        vm.startBroadcast();
 
         uint256 initialSupply = 1_000_000 * 1e6;
-        address tokenContract = address(new TestToken(initialSupply));
-
         address admin = vm.envAddress("ADMIN_EOA");
-        address accessControl = address(new ShiftAccessControl(admin));
-
-        address tvlFeed = address(new ShiftTvlFeed(accessControl));
-
         address feeCollector = vm.envAddress("FEE_COLLECTOR_EOA");
         address executor = vm.envAddress("EXECUTOR_EOA");
         string memory shareName = vm.envString("LP_TOKEN_NAME");
@@ -27,18 +21,28 @@ contract DeployShiftProtocol_Testnet is Script {
         uint256 maxTvlAllowance = vm.envUint("MAX_TVL_ALLOWANCE");
         uint32 withdrawalDelay = uint32(vm.envUint("WITHDRAWAL_DELAY"));
 
-        new ShiftVault(
-            accessControl,
-            tokenContract,
-            tvlFeed,
-            feeCollector,
-            executor,
-            shareName,
-            shareSymbol,
-            minTokenDeposit,
-            maxTvlAllowance,
-            withdrawalDelay
-        );
+        vm.startBroadcast();
+
+        address tokenContract = address(new TestToken(initialSupply));
+        address accessControl = address(new ShiftAccessControl(admin));
+        address tvlFeed = address(new ShiftTvlFeed(accessControl));
+
+        ShiftVaultArgs memory args = ShiftVaultArgs({
+            tokenContract: tokenContract,
+            tvlFeedContract: tvlFeed,
+            shareName: shareName,
+            shareSymbol: shareSymbol,
+            managerArgs: ShiftManagerArgs({
+                accessControlContract: accessControl,
+                feeCollector: feeCollector,
+                executor: executor,
+                minDeposit: minTokenDeposit,
+                maxTvl: maxTvlAllowance,
+                timelock: withdrawalDelay
+            })
+        });
+
+        new ShiftVault(args);
 
         // IMPORTANT: The ShiftAccessControl and ShiftTvlFeed contracts must be deployed before the ShiftVault contract.
         // This is because the ShiftVault constructor requires the addresses of these contracts.
@@ -53,13 +57,6 @@ contract DeployShiftProtocol_Testnet is Script {
 contract DeployShiftProtocol_Mainnet is Script {
     function run() external {
         address admin = vm.envAddress("ADMIN_EOA");
-
-        vm.startBroadcast();
-
-        address accessControl = address(new ShiftAccessControl(admin));
-
-        address tvlFeed = address(new ShiftTvlFeed(accessControl));
-
         address tokenContract = vm.envAddress("TOKEN_CONTRACT");
         address feeCollector = vm.envAddress("FEE_COLLECTOR_EOA");
         address executor = vm.envAddress("EXECUTOR_EOA");
@@ -69,18 +66,27 @@ contract DeployShiftProtocol_Mainnet is Script {
         uint256 maxTvlAllowance = vm.envUint("MAX_TVL_ALLOWANCE");
         uint32 withdrawalDelay = uint32(vm.envUint("WITHDRAWAL_DELAY"));
 
-        new ShiftVault(
-            accessControl,
-            tokenContract,
-            tvlFeed,
-            feeCollector,
-            executor,
-            shareName,
-            shareSymbol,
-            minTokenDeposit,
-            maxTvlAllowance,
-            withdrawalDelay
-        );
+        vm.startBroadcast();
+
+        address accessControl = address(new ShiftAccessControl(admin));
+        address tvlFeed = address(new ShiftTvlFeed(accessControl));
+
+        ShiftVaultArgs memory args = ShiftVaultArgs({
+            tokenContract: tokenContract,
+            tvlFeedContract: tvlFeed,
+            shareName: shareName,
+            shareSymbol: shareSymbol,
+            managerArgs: ShiftManagerArgs({
+                accessControlContract: accessControl,
+                feeCollector: feeCollector,
+                executor: executor,
+                minDeposit: minTokenDeposit,
+                maxTvl: maxTvlAllowance,
+                timelock: withdrawalDelay
+            })
+        });
+
+        new ShiftVault(args);
 
         // IMPORTANT: The ShiftAccessControl and ShiftTvlFeed contracts must be deployed before the ShiftVault contract.
         // This is because the ShiftVault constructor requires the addresses of these contracts.

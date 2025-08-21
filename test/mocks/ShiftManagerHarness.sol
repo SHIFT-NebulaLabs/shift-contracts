@@ -2,16 +2,10 @@
 pragma solidity ^0.8.28;
 
 import "../../src/ShiftManager.sol";
+import {ShiftManagerArgs} from "../../src/utils/Struct.sol";
 
 contract ShiftManagerHarness is ShiftManager {
-    constructor(
-        address _access,
-        address _feeCollector,
-        address _executor,
-        uint256 _minDeposit,
-        uint256 _maxTvl,
-        uint32 _timelock
-    ) ShiftManager(_access, _feeCollector, _executor, _minDeposit, _maxTvl, _timelock) {}
+    constructor(ShiftManagerArgs memory _args) ShiftManager(_args) {}
 
     function exposed_calc18ptFromBps(uint16 _bps) external pure returns (uint256) {
         return _calc18ptFromBps(_bps);

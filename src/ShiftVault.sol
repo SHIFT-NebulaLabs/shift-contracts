@@ -8,6 +8,7 @@ import {UD60x18, ud} from "@prb/math/src/UD60x18.sol";
 import {IShiftTvlFeed} from "./interface/IShiftTvlFeed.sol";
 import {AccessModifier} from "./utils/AccessModifier.sol";
 import {ShiftManager} from "./ShiftManager.sol";
+import {ShiftVaultArgs} from "./utils/Struct.sol";
 import {REQUEST_VALIDITY, FRESHNESS_VALIDITY} from "./utils/Constants.sol";
 
 /// @title ShiftVault
@@ -52,26 +53,21 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
         uint256 rate;
     }
 
-    constructor(
-        address _accessControlContract,
-        address _tokenContract,
-        address _tvlFeedContract,
-        address _feeCollector,
-        address _executor,
-        string memory _shareName,
-        string memory _shareSymbol,
-        uint256 _minDeposit,
-        uint256 _maxTvl,
-        uint32 _timeLock
-    )
-        ShiftManager(_accessControlContract, _feeCollector, _executor, _minDeposit, _maxTvl, _timeLock)
-        ERC20(_shareName, _shareSymbol)
-    {
-        require(_tokenContract != address(0), "ShiftVault: zero token address");
-        require(_tvlFeedContract != address(0), "ShiftVault: zero TVL feed address");
+    /**
+     * @notice Initializes the ShiftVault contract with protocol parameters and sets up the initial state.
+     * @param _args Struct containing initialization parameters:
+     *   - tokenContract: Address of the base ERC20 token accepted by the vault.
+     *   - tvlFeedContract: Address of the TVL oracle/feed contract.
+     *   - shareName: Name of the ERC20 LP share token.
+     *   - shareSymbol: Symbol of the ERC20 LP share token.
+     *   - managerArgs: Arguments for the ShiftManager base contract.
+     */
+    constructor(ShiftVaultArgs memory _args) ShiftManager(_args.managerArgs) ERC20(_args.shareName, _args.shareSymbol) {
+        require(_args.tokenContract != address(0), "ShiftVault: zero token address");
+        require(_args.tvlFeedContract != address(0), "ShiftVault: zero TVL feed address");
 
-        baseToken = ERC20(_tokenContract);
-        tvlFeed = IShiftTvlFeed(_tvlFeedContract);
+        baseToken = ERC20(_args.tokenContract);
+        tvlFeed = IShiftTvlFeed(_args.tvlFeedContract);
         require(baseToken.decimals() <= 18, "ShiftVault: base token decimals > 18");
         require(tvlFeed.decimals() <= 18, "ShiftVault: TVL feed decimals > 18");
 
