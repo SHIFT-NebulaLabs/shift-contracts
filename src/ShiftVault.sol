@@ -368,7 +368,8 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
      */
     function getSharePrice() external view returns (uint256) {
         IShiftTvlFeed.TvlData memory lastTvl = tvlFeed.getLastTvl();
-        require(block.timestamp - lastTvl.timestamp < freshness, "ShiftVault: stale TVL data");
+        if(block.timestamp - lastTvl.timestamp > freshness) return 0; // Return 0 if TVL data is stale
+        
         (uint256 tvl18pt, uint8 tvlScaleFactor) = _normalize(lastTvl.value, tvlFeed.decimals());
 
         if (lastTvl.supplySnapshot == 0) return 0;
