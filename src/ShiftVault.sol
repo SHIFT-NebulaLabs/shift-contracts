@@ -407,7 +407,7 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
 
     /// @notice Calculate tokens to return for share amount and rate.
     /// @param _shareAmount LP shares.
-    /// @param _rate Conversion rate (6 decimals).
+    /// @param _rate Conversion rate (tvl feed decimals).
     function _calcTokenFromShares(uint256 _shareAmount, uint256 _rate) internal view returns (uint256) {
         (, uint8 baseTokenScaleFactor) = _normalize(1, baseToken.decimals()); // Only to retrieve missing decimals from base token
         (uint256 rate18pt,) = _normalize(_rate, tvlFeed.decimals());
