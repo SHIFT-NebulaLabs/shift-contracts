@@ -24,8 +24,12 @@ contract ShiftVaultHarness is ShiftVault {
         return _normalize(_a, _d);
     }
 
-    function exposed_calcPerformanceFee(uint256 _a) external view returns (uint256) {
+    function exposed_calcPerformanceFee(int256 _a) external view returns (uint256) {
         return _calcPerformanceFee(_a);
+    }
+
+    function exposed_calcGain(uint256 _a) external view returns (int256) {
+        return _calcGain(_a);
     }
 
     function exposed_calcMaintenanceFee(uint256 _t, uint256 _p) external view returns (uint256) {

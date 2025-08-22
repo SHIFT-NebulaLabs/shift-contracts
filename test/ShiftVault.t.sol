@@ -296,7 +296,8 @@ contract ShiftVaultTest is Test {
         uint8 decimals = tvlFeed.decimals();
         (uint256 tvl18pt,) = vault.exposed_normalize(tvl, decimals);
 
-        uint256 fee = vault.exposed_calcPerformanceFee(tvl18pt);
+        int256 gainRef = vault.exposed_calcGain(tvl18pt);
+        uint256 fee = vault.exposed_calcPerformanceFee(gainRef);
 
         uint256 perfFeeBps = PERFORMANCE_FEE;
         uint256 perfFeeRate = (perfFeeBps * 1e18) / 10_000;
@@ -334,7 +335,8 @@ contract ShiftVaultTest is Test {
         uint8 decimals = tvlFeed.decimals();
         (uint256 tvl18pt,) = vault.exposed_normalize(_tvl, decimals);
 
-        uint256 fee = vault.exposed_calcPerformanceFee(tvl18pt);
+        int256 gainRef = vault.exposed_calcGain(tvl18pt);
+        uint256 fee = vault.exposed_calcPerformanceFee(gainRef);
 
         uint256 perfFeeBps = PERFORMANCE_FEE;
         uint256 perfFeeRate = (perfFeeBps * 1e18) / 10_000;
@@ -368,7 +370,7 @@ contract ShiftVaultTest is Test {
         assertEq(fee, expectedFee);
     }
 
-    // --- Admin Functions ---
+    // --- Claimer Functions ---
 
     /// @notice Tests that the admin can sweep dust tokens from the vault to the fee collector
     function testSweepDust() public {

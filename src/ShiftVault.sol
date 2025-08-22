@@ -19,6 +19,7 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
     ERC20 public immutable baseToken;
     IShiftTvlFeed public immutable tvlFeed;
 
+    int256 public profitValue;
     uint256 public availableForWithdraw;
     uint256 internal cumulativeDeposit;
     uint256 internal cumulativeWithdrawn;
@@ -339,16 +340,6 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
         return (3, shares, tkAmount, unlkTime); // Ready to process
     }
 
-    /// @notice Returns the total shares in the previous withdrawal batch.
-    /// @return The total shares in the relevant withdrawal batch.
-    function getBatchWithdrawAmount() external view onlyExecutor returns (uint256) {
-        if (batchWithdrawStates[currentBatchId - 1].rate == 0) {
-            return batchWithdrawStates[currentBatchId - 1].totalShares;
-        } else {
-            return batchWithdrawStates[currentBatchId].totalShares;
-        }
-    }
-
     /**
      * @notice Calculates and returns the current share price based on the latest TVL data.
      * @return The current share price as a uint256 value, normalized to the TVL decimals.
@@ -363,6 +354,16 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
 
         UD60x18 sharePrice = ud(tvl18pt).div(ud(lastTvl.supplySnapshot));
         return tvlScaleFactor == 0 ? sharePrice.unwrap() : sharePrice.unwrap() / 10 ** tvlScaleFactor; // UD60x18 to uint256 (tvl decimals)
+    }
+
+    /// @notice Returns the total shares in the previous withdrawal batch.
+    /// @return The total shares in the relevant withdrawal batch.
+    function getBatchWithdrawAmount() external view onlyExecutor returns (uint256) {
+        if (batchWithdrawStates[currentBatchId - 1].rate == 0) {
+            return batchWithdrawStates[currentBatchId - 1].totalShares;
+        } else {
+            return batchWithdrawStates[currentBatchId].totalShares;
+        }
     }
 
     // =========================
@@ -393,14 +394,33 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
         if (lastTvl.value == 0 && lastTvl.supplySnapshot == 0) return; // During initial setup
         require(block.timestamp - lastTvl.timestamp < freshness, "ShiftVault: stale TVL data");
 
-        (uint256 tvl18pt,) = _normalize(lastTvl.value, tvlFeed.decimals());
-        uint256 feeAmount = _calcPerformanceFee(tvl18pt);
-        uint256 share = _calcShare(feeAmount, tvl18pt, lastTvl.supplySnapshot);
+        (uint256 tvl18pt, uint8 tvlScaleFactor) = _normalize(lastTvl.value, tvlFeed.decimals());
+        int256 gain18pt = _calcGain(tvl18pt);
+        uint256 feeAmount = _calcPerformanceFee(gain18pt);
+        
+        profitValue = tvlScaleFactor == 0 ? gain18pt : gain18pt / int256(10 ** tvlScaleFactor);
 
+        if (feeAmount == 0) return;
         snapshotTvl18pt = tvl18pt;
         cumulativeDeposit = 0;
         cumulativeWithdrawn = 0;
+
+        uint256 share = _calcShare(feeAmount, tvl18pt, lastTvl.supplySnapshot);
         _mint(feeCollector, share);
+    }
+
+    /**
+     * @notice Calculates the net gain (or loss) of the vault since the last performance fee claim.
+     * @param _tvl18pt The latest TVL value, normalized to 18 decimals.
+     * @return gain18pt The net gain (or loss) as an int256, normalized to 18 decimals.
+     */
+    function _calcGain(uint256 _tvl18pt) internal view returns (int256) {
+        (uint256 cumulativeDeposit18pt,) = _normalize(cumulativeDeposit, baseToken.decimals());
+        (uint256 cumulativeWithdrawn18pt,) = _normalize(cumulativeWithdrawn, baseToken.decimals());
+
+        int256 gain18pt = int256(_tvl18pt)
+            - (int256(snapshotTvl18pt) + int256(cumulativeDeposit18pt) - int256(cumulativeWithdrawn18pt));
+        return gain18pt;
     }
 
     /// @notice Calculates the number of shares to mint for a deposit, based on the normalized base token amount, TVL, and supply snapshot at the time of deposit request.
@@ -439,18 +459,15 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
         return baseTokenScaleFactor == 0 ? tokenAmount.unwrap() : tokenAmount.unwrap() / 10 ** baseTokenScaleFactor; // UD60x18 to uint256 (token decimals)
     }
 
-    /// @notice Calculates the performance fee based on the latest TVL, all-time deposits, and withdrawals.
-    /// @param _tvl18pt The latest TVL value normalized to 18 decimals.
-    /// @return feeAmount The calculated performance fee amount (18 decimals).
-    function _calcPerformanceFee(uint256 _tvl18pt) internal view returns (uint256) {
-        if (performanceFee18pt == 0) return 0; // No fee if zero rate
-        (uint256 cumulativeDeposit18pt,) = _normalize(cumulativeDeposit, baseToken.decimals());
-        (uint256 cumulativeWithdrawn18pt,) = _normalize(cumulativeWithdrawn, baseToken.decimals());
+    /**
+     * @notice Calculates the performance fee based on the net gain since the last performance fee claim.
+     * @param _gain18pt The net gain since the last claim, normalized to 18 decimals.
+     * @return feeAmount The calculated performance fee amount (18 decimals).
+     */
+    function _calcPerformanceFee(int256 _gain18pt) internal view returns (uint256) {
+        if (performanceFee18pt == 0 || _gain18pt < 0) return 0; // No fee if zero rate
 
-        int256 gain18pt =
-            int256(_tvl18pt) - int256(snapshotTvl18pt) + int256(cumulativeDeposit18pt) - int256(cumulativeWithdrawn18pt);
-        require(gain18pt > 0, "ShiftVault: no performance fee to claim");
-        UD60x18 feeAmount = ud(uint256(gain18pt)).mul(ud(performanceFee18pt));
+        UD60x18 feeAmount = ud(uint256(_gain18pt)).mul(ud(performanceFee18pt));
         return feeAmount.unwrap();
     }
 
