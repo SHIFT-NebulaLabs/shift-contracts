@@ -220,47 +220,23 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
     }
 
     // =========================
-    // Admin functions
+    // Claimer functions
     // =========================
 
-    /// @notice Claim maintenance fee. Only admin.
-    function claimMaintenanceFee() public onlyAdmin {
-        IShiftTvlFeed.TvlData memory lastTvl = tvlFeed.getLastTvl();
-        if (lastTvl.value == 0 && lastTvl.supplySnapshot == 0) return; // During initial setup
-        uint256 lastClaimed = lastMaintenanceFeeClaimedAt;
-        uint256 nowTs = block.timestamp;
-        require(nowTs - lastTvl.timestamp < freshness, "ShiftVault: stale TVL data");
-        require(nowTs > lastClaimed, "ShiftVault: already claimed for this period");
-
-        lastMaintenanceFeeClaimedAt = nowTs;
-        (uint256 tvl18pt,) = _normalize(lastTvl.value, tvlFeed.decimals());
-        uint256 feeAmount = _calcMaintenanceFee(lastClaimed, tvl18pt);
-        if (feeAmount == 0) return;
-
-        uint256 share = _calcShare(feeAmount, tvl18pt, lastTvl.supplySnapshot);
-        _mint(feeCollector, share);
+    /// @notice Claim maintenance fee. Only claimer.
+    function claimMaintenanceFee() external onlyClaimer {
+        _claimMaintenanceFee();
     }
 
-    /// @notice Claim performance fee. Only admin.
-    function claimPerformanceFee() public onlyAdmin {
-        IShiftTvlFeed.TvlData memory lastTvl = tvlFeed.getLastTvl();
-        if (lastTvl.value == 0 && lastTvl.supplySnapshot == 0) return; // During initial setup
-        require(block.timestamp - lastTvl.timestamp < freshness, "ShiftVault: stale TVL data");
-
-        (uint256 tvl18pt,) = _normalize(lastTvl.value, tvlFeed.decimals());
-        uint256 feeAmount = _calcPerformanceFee(tvl18pt);
-        uint256 share = _calcShare(feeAmount, tvl18pt, lastTvl.supplySnapshot);
-
-        snapshotTvl18pt = tvl18pt;
-        cumulativeDeposit = 0;
-        cumulativeWithdrawn = 0;
-        _mint(feeCollector, share);
+    /// @notice Claim performance fee. Only claimer.
+    function claimPerformanceFee() external onlyClaimer {
+        _claimPerformanceFee();
     }
 
-    /// @notice Sweep any excess base tokens (dust) from the vault to the fee collector. Only admin.
+    /// @notice Sweep any excess base tokens (dust) from the vault to the fee collector. Only claimer.
     /// @dev Transfers any base tokens held by the vault contract that are not reserved for withdrawals
     /// @dev All deposits are directly transferred to the executor
-    function sweepDust() public onlyAdmin {
+    function sweepDust() public onlyClaimer {
         // Sweep dust (small amounts of tokens) from the vault to the fee collector
         require(baseToken.balanceOf(address(this)) > availableForWithdraw, "ShiftVault: no dust to sweep");
 
@@ -268,7 +244,9 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
         baseToken.safeTransfer(feeCollector, dustAmount);
     }
 
+    // =========================
     // Overridden functions
+    // =========================
 
     /// @notice Update the maximum TVL allowed in the vault. Only admin.
     /// @param _amount New maximum TVL value.
@@ -284,7 +262,7 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
     /// @dev Claims any pending maintenance fees before updating the fee.
     /// @param _annualFeeBps The new annual maintenance fee, expressed in basis points (bps).
     function updateMaintenanceFee(uint16 _annualFeeBps) public override onlyAdmin {
-        claimMaintenanceFee();
+        _claimMaintenanceFee();
         super.updateMaintenanceFee(_annualFeeBps);
     }
 
@@ -292,7 +270,7 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
     /// @dev Claims any pending performance fees before updating the fee.
     /// @param _performanceFeeBps The new performance fee, expressed in basis points (bps).
     function updatePerformanceFee(uint16 _performanceFeeBps) public override onlyAdmin {
-        claimPerformanceFee();
+        _claimPerformanceFee();
         super.updatePerformanceFee(_performanceFeeBps);
     }
 
@@ -390,6 +368,40 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
     // =========================
     // Internal/private functions
     // =========================
+
+    /// @notice Claim maintenance fee.
+    function _claimMaintenanceFee() internal {
+        IShiftTvlFeed.TvlData memory lastTvl = tvlFeed.getLastTvl();
+        if (lastTvl.value == 0 && lastTvl.supplySnapshot == 0) return; // During initial setup
+        uint256 lastClaimed = lastMaintenanceFeeClaimedAt;
+        uint256 nowTs = block.timestamp;
+        require(nowTs - lastTvl.timestamp < freshness, "ShiftVault: stale TVL data");
+        require(nowTs > lastClaimed, "ShiftVault: already claimed for this period");
+
+        lastMaintenanceFeeClaimedAt = nowTs;
+        (uint256 tvl18pt,) = _normalize(lastTvl.value, tvlFeed.decimals());
+        uint256 feeAmount = _calcMaintenanceFee(lastClaimed, tvl18pt);
+        if (feeAmount == 0) return;
+
+        uint256 share = _calcShare(feeAmount, tvl18pt, lastTvl.supplySnapshot);
+        _mint(feeCollector, share);
+    }
+
+    /// @notice Claim performance fee.
+    function _claimPerformanceFee() internal {
+        IShiftTvlFeed.TvlData memory lastTvl = tvlFeed.getLastTvl();
+        if (lastTvl.value == 0 && lastTvl.supplySnapshot == 0) return; // During initial setup
+        require(block.timestamp - lastTvl.timestamp < freshness, "ShiftVault: stale TVL data");
+
+        (uint256 tvl18pt,) = _normalize(lastTvl.value, tvlFeed.decimals());
+        uint256 feeAmount = _calcPerformanceFee(tvl18pt);
+        uint256 share = _calcShare(feeAmount, tvl18pt, lastTvl.supplySnapshot);
+
+        snapshotTvl18pt = tvl18pt;
+        cumulativeDeposit = 0;
+        cumulativeWithdrawn = 0;
+        _mint(feeCollector, share);
+    }
 
     /// @notice Calculates the number of shares to mint for a deposit, based on the normalized base token amount, TVL, and supply snapshot at the time of deposit request.
     /// @dev If the vault has no existing supply, returns the normalized token amount as shares (1:1). Otherwise, uses the share calculation formula.

@@ -19,12 +19,14 @@ contract ShiftVaultTest is Test {
     address constant FEE_COLLECTOR = address(3);
     address constant USER = address(4);
     address constant ORACLE = address(5);
+    address constant CLAIMER = address(6);
 
     string constant SHARE_NAME = "Shift LP";
     string constant SHARE_SYMBOL = "SLP";
 
     bytes32 constant EXECUTOR_ROLE = keccak256("EXECUTOR_ROLE");
     bytes32 constant ORACLE_ROLE = keccak256("ORACLE_ROLE");
+    bytes32 constant CLAIMER_ROLE = keccak256("CLAIMER_ROLE");
 
     uint256 constant MIN_DEPOSIT = 1_000_000;
     uint256 constant INITIAL_BALANCE = 100e6;
@@ -38,6 +40,7 @@ contract ShiftVaultTest is Test {
         access.grantRole(0x00, ADMIN);
         access.grantRole(EXECUTOR_ROLE, EXECUTOR);
         access.grantRole(ORACLE_ROLE, ORACLE);
+        access.grantRole(CLAIMER_ROLE, CLAIMER);
         token = new MockERC20(6);
         tvlFeed = new ShiftTvlFeed(address(access));
 
@@ -369,7 +372,7 @@ contract ShiftVaultTest is Test {
 
     /// @notice Tests that the admin can sweep dust tokens from the vault to the fee collector
     function testSweepDust() public {
-        vm.startPrank(ADMIN);
+        vm.startPrank(CLAIMER);
         deal(address(token), address(vault), 10);
         vault.sweepDust();
         assertEq(token.balanceOf(FEE_COLLECTOR), 10);
@@ -390,7 +393,7 @@ contract ShiftVaultTest is Test {
         vault.resolveWithdraw(5_000_000, 1_000_000);
         vm.stopPrank();
 
-        vm.startPrank(ADMIN);
+        vm.startPrank(CLAIMER);
         deal(address(token), address(vault), 5_000_010);
         vault.sweepDust();
         assertEq(token.balanceOf(FEE_COLLECTOR), 10);
@@ -400,7 +403,7 @@ contract ShiftVaultTest is Test {
     // --- Revert/Negative Tests ---
 
     function testSweepDustReverts() public {
-        vm.prank(ADMIN);
+        vm.prank(CLAIMER);
         vm.expectRevert("ShiftVault: no dust to sweep");
         vault.sweepDust();
     }

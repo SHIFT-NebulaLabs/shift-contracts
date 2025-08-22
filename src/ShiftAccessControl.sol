@@ -9,6 +9,7 @@ import "@openzeppelin/contracts/access/AccessControl.sol";
 contract ShiftAccessControl is AccessControl {
     bytes32 public constant ORACLE_ROLE = keccak256("ORACLE_ROLE");
     bytes32 public constant EXECUTOR_ROLE = keccak256("EXECUTOR_ROLE");
+    bytes32 public constant CLAIMER_ROLE = keccak256("CLAIMER_ROLE");
 
     constructor(address _admin) {
         require(_admin != address(0), "ShiftAccessControl: zero address for admin");

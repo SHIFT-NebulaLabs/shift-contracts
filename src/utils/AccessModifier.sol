@@ -7,6 +7,7 @@ abstract contract AccessModifier {
     bytes32 private constant DEFAULT_ADMIN_ROLE = 0x00;
     bytes32 private constant ORACLE_ROLE = keccak256("ORACLE_ROLE");
     bytes32 private constant EXECUTOR_ROLE = keccak256("EXECUTOR_ROLE");
+    bytes32 private constant CLAIMER_ROLE = keccak256("CLAIMER_ROLE");
 
     IAccessControl public immutable accessControlContract;
 
@@ -27,6 +28,11 @@ abstract contract AccessModifier {
 
     modifier onlyExecutor() {
         require(accessControlContract.hasRole(EXECUTOR_ROLE, msg.sender), "Not executor");
+        _;
+    }
+
+    modifier onlyClaimer() {
+        require(accessControlContract.hasRole(CLAIMER_ROLE, msg.sender), "Not claimer");
         _;
     }
 }
