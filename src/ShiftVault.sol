@@ -9,6 +9,7 @@ import {IShiftTvlFeed} from "./interface/IShiftTvlFeed.sol";
 import {AccessModifier} from "./utils/AccessModifier.sol";
 import {ShiftManager} from "./ShiftManager.sol";
 import {ShiftVaultArgs} from "./utils/Structs.sol";
+import {MINIMUM_LIQUIDITY, BURN_ADDRESS} from "./utils/Constants.sol";
 
 /// @title ShiftVault
 /// @notice Manages liquidity and vault operations for the Shift protocol.
@@ -19,7 +20,7 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
     ERC20 public immutable baseToken;
     IShiftTvlFeed public immutable tvlFeed;
 
-    int256 public profitValue;
+    int256 public profitValue; // Profit value in tvl decimals
     uint256 public availableForWithdraw;
     uint256 internal cumulativeDeposit;
     uint256 internal cumulativeWithdrawn;
@@ -125,6 +126,10 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
         uint256 shares = _calcSharesFromToken(baseToken18pt, tvl18pt, tvl.supplySnapshot);
 
         require(shares > 0, "ShiftVault: zero shares calculated");
+
+        // Permanently lock a small amount of LP tokens to prevent full pool drain and ratio manipulation.
+        if (tvl.supplySnapshot == 0) _mint(BURN_ADDRESS, MINIMUM_LIQUIDITY);
+
         _mint(msg.sender, shares);
 
         cumulativeDeposit += actualAmount;
@@ -397,7 +402,7 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
         (uint256 tvl18pt, uint8 tvlScaleFactor) = _normalize(lastTvl.value, tvlFeed.decimals());
         int256 gain18pt = _calcGain(tvl18pt);
         uint256 feeAmount = _calcPerformanceFee(gain18pt);
-        
+
         profitValue = tvlScaleFactor == 0 ? gain18pt : gain18pt / int256(10 ** tvlScaleFactor);
 
         if (feeAmount == 0) return;
