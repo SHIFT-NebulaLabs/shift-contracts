@@ -38,7 +38,6 @@ import {
     AlreadyClaimed,
     ParamOutOfBounds
 } from "./utils/Errors.sol";
-import {MINIMUM_LIQUIDITY, BURN_ADDRESS} from "./utils/Constants.sol";
 
 /// @title ShiftVault
 /// @notice Manages liquidity and vault operations for the Shift protocol.
@@ -155,9 +154,6 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
         uint256 shares = _calcSharesFromToken(baseToken18pt, tvl18pt, tvl.supplySnapshot);
 
         require(shares > 0, ZeroCalculated());
-
-        // Permanently lock a small amount of LP tokens to prevent full pool drain and ratio manipulation.
-        if (tvl.supplySnapshot == 0) _mint(BURN_ADDRESS, MINIMUM_LIQUIDITY);
 
         _mint(msg.sender, shares);
 

@@ -30,7 +30,6 @@ contract ShiftVaultTest is Test {
 
     uint256 constant MIN_DEPOSIT = 1_000_000;
     uint256 constant INITIAL_BALANCE = 100e6;
-    uint256 constant MIN_LIQUIDITY = 10 ** 3;
 
     uint16 constant PERFORMANCE_FEE = 2000;
     uint16 constant MAINTENANCE_FEE = 200;
@@ -147,7 +146,7 @@ contract ShiftVaultTest is Test {
         _setupUser(USER, INITIAL_BALANCE, depositAmount);
         vault.deposit(depositAmount);
 
-        assertEq(vault.balanceOf(USER), 600.000000000000005 ether); // 600 shares
+        assertEq(vault.balanceOf(USER), (INITIAL_BALANCE + depositAmount) * 1e12);
         assertEq(token.balanceOf(EXECUTOR), INITIAL_BALANCE + depositAmount);
     }
 
@@ -217,7 +216,7 @@ contract ShiftVaultTest is Test {
         vm.stopPrank();
 
         uint256 shares = 5e18;
-        uint256 totalSupply = vault.totalSupply() - MIN_LIQUIDITY;
+        uint256 totalSupply = vault.totalSupply();
         uint256 tvl = 20_000_000;
         uint256 expectedTokens = (shares * tvl * 1e12) / totalSupply;
 
