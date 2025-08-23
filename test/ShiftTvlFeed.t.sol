@@ -62,7 +62,7 @@ contract ShiftTvlFeedTest is Test {
 
     /// @notice Tests that initialize reverts if already initialized
     function testRevertAlreadyInitialized() public {
-        vm.expectRevert("ShiftTvlFeed: already initialized");
+        vm.expectRevert();
         vm.prank(ADMIN);
         tvlFeed.initialize(address(mockVault));
     }

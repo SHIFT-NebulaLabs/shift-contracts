@@ -9,6 +9,35 @@ import {IShiftTvlFeed} from "./interface/IShiftTvlFeed.sol";
 import {AccessModifier} from "./utils/AccessModifier.sol";
 import {ShiftManager} from "./ShiftManager.sol";
 import {ShiftVaultArgs} from "./utils/Structs.sol";
+import {
+    ZeroAddress,
+    MoreThan18Decimals,
+    NotWhitelisted,
+    AlreadyRequested,
+    RequestStillValid,
+    DepositBelowMinimum,
+    NoValidRequest,
+    ZeroToken,
+    ExceedsMaxTVL,
+    ZeroCalculated,
+    NoSharesToWithdraw,
+    Locked,
+    BatchNotResolved,
+    NoValidRequest,
+    BatchResolvedOrOngoing,
+    NotTVLFeed,
+    AlreadyAllowed,
+    RequestExpired,
+    NoDustToSweep,
+    StaleTvlData,
+    NewMaxTVLBelowCurrentTVL,
+    BatchNotResolved,
+    BatchResolved,
+    InsufficientTokensForBatch,
+    OverflowOnNormalization,
+    AlreadyClaimed,
+    ParamOutOfBounds
+} from "./utils/Errors.sol";
 import {MINIMUM_LIQUIDITY, BURN_ADDRESS} from "./utils/Constants.sol";
 
 /// @title ShiftVault
@@ -70,12 +99,12 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
         ShiftManager(_args.managerArgs)
         ERC20(_args.shareName, _args.shareSymbol)
     {
-        require(_args.tokenContract != address(0), "ShiftVault: zero token address");
-        require(_args.tvlFeedContract != address(0), "ShiftVault: zero TVL feed address");
+        require(_args.tokenContract != address(0), ZeroAddress());
+        require(_args.tvlFeedContract != address(0), ZeroAddress());
 
         baseToken = ERC20(_args.tokenContract);
         tvlFeed = IShiftTvlFeed(_args.tvlFeedContract);
-        require(baseToken.decimals() <= 18, "ShiftVault: base token decimals > 18");
+        require(baseToken.decimals() <= 18, MoreThan18Decimals());
 
         batchWithdrawStates[currentBatchId].rate = 1;
         currentBatchId = 1;
@@ -88,12 +117,12 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
 
     /// @notice Request a deposit. Only one active request per user.
     function reqDeposit() external nonReentrant notPaused {
-        require(isWhitelisted[msg.sender] || !whitelistEnabled, "ShiftVault: not whitelisted");
+        require(isWhitelisted[msg.sender] || !whitelistEnabled, NotWhitelisted());
         DepositState storage state = userDepositStates[msg.sender];
         if (_isExpired()) delete userDepositStates[msg.sender]; // Reset if expired, to allow new request
 
-        require(!state.isPriceUpdated, "ShiftVault: deposit request already exists");
-        require(_isExpired(), "ShiftVault: deposit request still valid");
+        require(!state.isPriceUpdated, AlreadyRequested());
+        require(_isExpired(), RequestStillValid());
 
         state.expirationTime = block.timestamp + uint256(requestValidity);
         emit DepositRequested(msg.sender);
@@ -102,9 +131,9 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
     /// @notice Deposit base tokens after a valid request.
     /// @param _tokenAmount Base token amount to deposit.
     function deposit(uint256 _tokenAmount) external nonReentrant notPaused {
-        require(_tokenAmount >= minDepositAmount, "ShiftVault: deposit below minimum");
+        require(_tokenAmount >= minDepositAmount, DepositBelowMinimum());
         DepositState storage state = userDepositStates[msg.sender];
-        require(state.isPriceUpdated && !_isExpired(), "ShiftVault: no valid deposit request");
+        require(state.isPriceUpdated && !_isExpired(), NoValidRequest());
 
         // Reset state before external call for safety
         uint256 requestIndex = state.requestIndex;
@@ -114,18 +143,18 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
         uint256 balanceBefore = baseToken.balanceOf(executor);
         baseToken.safeTransferFrom(msg.sender, executor, _tokenAmount);
         uint256 actualAmount = baseToken.balanceOf(executor) - balanceBefore;
-        require(actualAmount > 0, "ShiftVault: zero actual deposit");
+        require(actualAmount > 0, ZeroToken());
 
         IShiftTvlFeed.TvlData memory tvl = tvlFeed.getTvlEntry(requestIndex);
         // Normalize values once for efficiency
         (uint256 tvl18pt,) = _normalize(tvl.value, tvlFeed.decimals());
         (uint256 baseToken18pt,) = _normalize(actualAmount, baseToken.decimals());
 
-        require(tvl.value + actualAmount <= maxTvl, "ShiftVault: exceeds max TVL");
+        require(tvl.value + actualAmount <= maxTvl, ExceedsMaxTVL());
 
         uint256 shares = _calcSharesFromToken(baseToken18pt, tvl18pt, tvl.supplySnapshot);
 
-        require(shares > 0, "ShiftVault: zero shares calculated");
+        require(shares > 0, ZeroCalculated());
 
         // Permanently lock a small amount of LP tokens to prevent full pool drain and ratio manipulation.
         if (tvl.supplySnapshot == 0) _mint(BURN_ADDRESS, MINIMUM_LIQUIDITY);
@@ -140,11 +169,11 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
     /// @notice Request withdrawal of LP shares. Only one active request per user.
     /// @param _shareAmount Amount of LP shares to withdraw.
     function reqWithdraw(uint256 _shareAmount) external nonReentrant notPaused {
-        require(_shareAmount > 0, "ShiftVault: zero shares");
-        require(isWhitelisted[msg.sender] || !whitelistEnabled, "ShiftVault: not whitelisted");
+        require(_shareAmount > 0, ParamOutOfBounds("share amount"));
+        require(isWhitelisted[msg.sender] || !whitelistEnabled, NotWhitelisted());
 
         WithdrawState storage userState = userWithdrawStates[msg.sender];
-        require(userState.sharesAmount == 0, "ShiftVault: withdraw already requested");
+        require(userState.sharesAmount == 0, AlreadyRequested());
 
         // Transfer shares to the vault
         _transfer(msg.sender, address(this), _shareAmount);
@@ -164,17 +193,17 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
     function withdraw() external nonReentrant {
         WithdrawState storage userState = userWithdrawStates[msg.sender];
         uint256 shares = userState.sharesAmount;
-        require(shares > 0, "ShiftVault: no shares to withdraw");
+        require(shares > 0, NoSharesToWithdraw());
 
         uint256 unlockTime = userState.requestedAt + uint256(userState.timelock);
-        require(block.timestamp >= unlockTime, "ShiftVault: withdrawal locked");
+        require(block.timestamp >= unlockTime, Locked());
 
         BatchState storage batchState = batchWithdrawStates[userState.batchId];
         uint256 rate = batchState.rate;
-        require(rate > 0, "ShiftVault: batch not resolved");
+        require(rate > 0, BatchNotResolved());
 
         uint256 tokenAmount = _calcTokenFromShares(shares, rate);
-        require(tokenAmount > 0, "ShiftVault: zero token calculated");
+        require(tokenAmount > 0, ZeroCalculated());
 
         // Effects: update state before external calls
         delete userWithdrawStates[msg.sender];
@@ -193,8 +222,8 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
     /// @notice Cancel a pending withdrawal request if batch not processed.
     function cancelWithdraw() external nonReentrant notPaused {
         WithdrawState storage userState = userWithdrawStates[msg.sender];
-        require(userState.sharesAmount > 0, "ShiftVault: no withdrawal request to cancel");
-        require(currentBatchId == userState.batchId, "ShiftVault: batch already processed or ongoing");
+        require(userState.sharesAmount > 0, NoValidRequest());
+        require(currentBatchId == userState.batchId, BatchResolvedOrOngoing());
 
         // Update batch state before resetting user state
         BatchState storage batchState = batchWithdrawStates[userState.batchId];
@@ -215,10 +244,10 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
     /// @notice Called by TVL feed to allow user deposit after price update.
     /// @param _user User address allowed to deposit.
     function allowDeposit(address _user, uint256 _tvlIndex) external nonReentrant notPaused {
-        require(msg.sender == address(tvlFeed), "ShiftVault: caller is not TVL feed");
+        require(msg.sender == address(tvlFeed), NotTVLFeed());
         DepositState storage state = userDepositStates[_user];
-        require(!state.isPriceUpdated, "ShiftVault: deposit already allowed");
-        require(state.expirationTime > block.timestamp, "ShiftVault: deposit request expired");
+        require(!state.isPriceUpdated, AlreadyAllowed());
+        require(state.expirationTime > block.timestamp, RequestExpired());
 
         state.isPriceUpdated = true;
         state.requestIndex = _tvlIndex;
@@ -244,7 +273,7 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
     /// @dev All deposits are directly transferred to the executor
     function sweepDust() public onlyClaimer {
         // Sweep dust (small amounts of tokens) from the vault to the fee collector
-        require(baseToken.balanceOf(address(this)) > availableForWithdraw, "ShiftVault: no dust to sweep");
+        require(baseToken.balanceOf(address(this)) > availableForWithdraw, NoDustToSweep());
 
         uint256 dustAmount = baseToken.balanceOf(address(this)) - availableForWithdraw;
         baseToken.safeTransfer(feeCollector, dustAmount);
@@ -258,8 +287,8 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
     /// @param _amount New maximum TVL value.
     function updateMaxTvl(uint256 _amount) public override onlyAdmin {
         IShiftTvlFeed.TvlData memory lastTvl = tvlFeed.getLastTvl();
-        require(block.timestamp - lastTvl.timestamp < freshness, "ShiftVault: stale TVL data");
-        require(_amount >= lastTvl.value, "ShiftVault: new max TVL below current TVL");
+        require(block.timestamp - lastTvl.timestamp < freshness, StaleTvlData());
+        require(_amount >= lastTvl.value, NewMaxTVLBelowCurrentTVL());
 
         super.updateMaxTvl(_amount);
     }
@@ -286,7 +315,7 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
 
     /// @notice Process current withdrawal batch. Only executor.
     function processWithdraw() external onlyExecutor notPaused {
-        require(batchWithdrawStates[currentBatchId - 1].rate != 0, "ShiftVault: previous batch not resolved");
+        require(batchWithdrawStates[currentBatchId - 1].rate != 0, BatchNotResolved());
 
         // Move to next batch only if shares to process
         if (batchWithdrawStates[currentBatchId].totalShares > 0) {
@@ -298,18 +327,18 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
     /// @param _tokenAmount Tokens to transfer in for withdrawals.
     /// @param _rate Conversion rate for the batch with TVL precision.
     function resolveWithdraw(uint256 _tokenAmount, uint256 _rate) external onlyExecutor nonReentrant notPaused {
-        require(_rate > 0, "ShiftVault: invalid rate");
+        require(_rate > 0, ParamOutOfBounds("rate"));
 
         uint256 batchId = currentBatchId - 1;
         BatchState storage batchState = batchWithdrawStates[batchId];
-        require(batchState.rate == 0, "ShiftVault: batch already resolved");
+        require(batchState.rate == 0, BatchResolved());
 
         uint256 requiredTokens = _calcTokenFromShares(batchState.totalShares, _rate);
 
         uint256 balanceBefore = baseToken.balanceOf(address(this));
         baseToken.safeTransferFrom(msg.sender, address(this), _tokenAmount);
         uint256 actualAmount = baseToken.balanceOf(address(this)) - balanceBefore;
-        require(actualAmount >= requiredTokens, "ShiftVault: insufficient tokens for batch");
+        require(actualAmount >= requiredTokens, InsufficientTokensForBatch());
 
         availableForWithdraw += actualAmount;
         batchState.rate = _rate;
@@ -381,8 +410,8 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
         if (lastTvl.value == 0 && lastTvl.supplySnapshot == 0) return; // During initial setup
         uint256 lastClaimed = lastMaintenanceFeeClaimedAt;
         uint256 nowTs = block.timestamp;
-        require(nowTs - lastTvl.timestamp < freshness, "ShiftVault: stale TVL data");
-        require(nowTs > lastClaimed, "ShiftVault: already claimed for this period");
+        require(nowTs - lastTvl.timestamp < freshness, StaleTvlData());
+        require(nowTs > lastClaimed, AlreadyClaimed());
 
         lastMaintenanceFeeClaimedAt = nowTs;
         (uint256 tvl18pt,) = _normalize(lastTvl.value, tvlFeed.decimals());
@@ -397,7 +426,7 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
     function _claimPerformanceFee() internal {
         IShiftTvlFeed.TvlData memory lastTvl = tvlFeed.getLastTvl();
         if (lastTvl.value == 0 && lastTvl.supplySnapshot == 0) return; // During initial setup
-        require(block.timestamp - lastTvl.timestamp < freshness, "ShiftVault: stale TVL data");
+        require(block.timestamp - lastTvl.timestamp < freshness, StaleTvlData());
 
         (uint256 tvl18pt, uint8 tvlScaleFactor) = _normalize(lastTvl.value, tvlFeed.decimals());
         int256 gain18pt = _calcGain(tvl18pt);
@@ -448,7 +477,7 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
     /// @param _tvl18pt The total value locked at the time of deposit, expressed in 18 decimal places.
     /// @return The number of shares to mint, as a uint256 with 18 decimals.
     function _calcShare(uint256 _amount18pt, uint256 _tvl18pt, uint256 _totalSupply) internal pure returns (uint256) {
-        require(_tvl18pt > 0, "ShiftVault: TVL must be greater than zero");
+        require(_tvl18pt > 0, ParamOutOfBounds("tvl"));
         UD60x18 shares = ud(_amount18pt).mul(ud(_totalSupply)).div(ud(_tvl18pt));
         return shares.unwrap(); // UD60x18 to uint256 (18 decimals)
     }
@@ -501,7 +530,7 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
 
         if (scaleFactor > 0) {
             uint256 factor = 10 ** scaleFactor;
-            require(_amount <= type(uint256).max / factor, "ShiftVault: overflow on normalization");
+            require(_amount <= type(uint256).max / factor, OverflowOnNormalization());
             amount = _amount * factor;
         } else {
             // Same decimals, no scaling needed

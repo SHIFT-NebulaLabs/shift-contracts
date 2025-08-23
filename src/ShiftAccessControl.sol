@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import "@openzeppelin/contracts/access/AccessControl.sol";
+import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
+import {ZeroAddress} from "./utils/Errors.sol";
 
 /// @title ShiftAccessControl
 /// @notice Shift protocol parameters, fees, and whitelist management.
@@ -12,7 +13,7 @@ contract ShiftAccessControl is AccessControl {
     bytes32 public constant CLAIMER_ROLE = keccak256("CLAIMER_ROLE");
 
     constructor(address _admin) {
-        require(_admin != address(0), "ShiftAccessControl: zero address for admin");
+        require(_admin != address(0), ZeroAddress());
         _grantRole(DEFAULT_ADMIN_ROLE, _admin);
     }
 }

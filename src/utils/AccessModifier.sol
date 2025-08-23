@@ -2,6 +2,7 @@
 pragma solidity ^0.8.28;
 
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
+import {ZeroAddress, Unauthorized} from "./Errors.sol";
 
 abstract contract AccessModifier {
     bytes32 private constant DEFAULT_ADMIN_ROLE = 0x00;
@@ -12,27 +13,27 @@ abstract contract AccessModifier {
     IAccessControl public immutable accessControlContract;
 
     constructor(address _accessControlContract) {
-        require(_accessControlContract != address(0), "Zero address");
+        require(_accessControlContract != address(0), ZeroAddress());
         accessControlContract = IAccessControl(_accessControlContract);
     }
 
     modifier onlyAdmin() {
-        require(accessControlContract.hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "Not admin");
+        require(accessControlContract.hasRole(DEFAULT_ADMIN_ROLE, msg.sender), Unauthorized("admin"));
         _;
     }
 
     modifier onlyOracle() {
-        require(accessControlContract.hasRole(ORACLE_ROLE, msg.sender), "Not oracle");
+        require(accessControlContract.hasRole(ORACLE_ROLE, msg.sender), Unauthorized("oracle"));
         _;
     }
 
     modifier onlyExecutor() {
-        require(accessControlContract.hasRole(EXECUTOR_ROLE, msg.sender), "Not executor");
+        require(accessControlContract.hasRole(EXECUTOR_ROLE, msg.sender), Unauthorized("executor"));
         _;
     }
 
     modifier onlyClaimer() {
-        require(accessControlContract.hasRole(CLAIMER_ROLE, msg.sender), "Not claimer");
+        require(accessControlContract.hasRole(CLAIMER_ROLE, msg.sender), Unauthorized("claimer"));
         _;
     }
 }
