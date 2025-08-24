@@ -7,7 +7,7 @@ This repository contains the smart contracts powering the Shift protocol, develo
 ## Table of Contents
 
 - [Overview](#overview)
-- [Security & Audit (On Going)](#security--audit-on-going)
+- [Security & Audit](#security--audit-on-going)
 - [Smart Contract Technical Specification](#smart-contract-technical-specification)
   - [ShiftAccessControl.sol](#shiftaccesscontrolsol)
   - [ShiftManager.sol](#shiftmanagersol)
@@ -34,12 +34,14 @@ Shift aims to deliver robust, secure, and efficient smart contracts for decentra
 
 ---
 
-## Security & Audit (On Going)
+## 🛡️ Security & Audit
 
 Security is a top priority for the Shift protocol.  
 The following contracts are currently undergoing a professional external security audit.
-**Status:**  
-Audit is in progress. Results and recommendations will be published upon completion in the documentation and this repository.
+
+| Audit firm                                 | Report                                       | Year |
+|--------------------------------------------|----------------------------------------------|------|
+| [SB Security](https://www.sbsecurity.net/) | [Shift Protocol Security Review ](./audits/shift-sbsecurity-audit-2025.pdf)  | 2025 |
 
 ---
 
