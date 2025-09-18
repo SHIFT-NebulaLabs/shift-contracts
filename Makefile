@@ -18,14 +18,14 @@ testing:
 sim-deploy-local:
 	forge script script/ShiftProtocol.s.sol:DeployShiftProtocol_Testnet
 
-sim-deploy-sepolia:
-	forge script script/ShiftProtocol.s.sol:DeployShiftProtocol_Testnet --rpc-url $(SEPOLIA_URL)
+sim-deploy-testnet:
+	forge script script/ShiftProtocol.s.sol:DeployShiftProtocol_Testnet --rpc-url $(MAINNET_URL)
 
-sim-deploy-arbitrum:
-	forge script script/ShiftProtocol.s.sol:DeployShiftProtocol_Mainnet --rpc-url $(ARBITRUM_URL)
+sim-deploy-mainnet:
+	forge script script/ShiftProtocol.s.sol:DeployShiftProtocol_Mainnet --rpc-url $(MAINNET_URL)
 
-deploy-sepolia:
-	forge script script/ShiftProtocol.s.sol:DeployShiftProtocol_Testnet --rpc-url $(SEPOLIA_URL) --interactives 1 --broadcast --verifier etherscan --etherscan-api-key $(ETHERSCAN_API_KEY) --verify
+deploy-testnet:
+	forge script script/ShiftProtocol.s.sol:DeployShiftProtocol_Testnet --rpc-url $(TESTNET_URL) --interactives 1 --broadcast --verifier etherscan --etherscan-api-key $(ETHERSCAN_API_KEY) --verify
 
-deploy-arbitrum:
-	forge script script/ShiftProtocol.s.sol:DeployShiftProtocol_Mainnet --rpc-url $(ARBITRUM_URL) --interactives 1 --broadcast --verifier etherscan --etherscan-api-key $(ETHERSCAN_API_KEY) --verify
+deploy-mainnet:
+	forge script script/ShiftProtocol.s.sol:DeployShiftProtocol_Mainnet --rpc-url $(MAINNET_URL) --interactives 1 --broadcast --verifier etherscan --etherscan-api-key $(ETHERSCAN_API_KEY) --verify
