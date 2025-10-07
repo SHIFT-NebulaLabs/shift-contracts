@@ -19,7 +19,7 @@ sim-deploy-local:
 	forge script script/ShiftProtocol.s.sol:DeployShiftProtocol_Testnet
 
 sim-deploy-testnet:
-	forge script script/ShiftProtocol.s.sol:DeployShiftProtocol_Testnet --rpc-url $(MAINNET_URL)
+	forge script script/ShiftProtocol.s.sol:DeployShiftProtocol_Testnet --rpc-url $(TESTNET_URL)
 
 sim-deploy-mainnet:
 	forge script script/ShiftProtocol.s.sol:DeployShiftProtocol_Mainnet --rpc-url $(MAINNET_URL)
