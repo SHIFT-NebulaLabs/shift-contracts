@@ -84,8 +84,11 @@ contract ShiftVaultTest is Test {
         vm.startPrank(_user);
         vault.reqDeposit();
         vm.stopPrank();
+        
+        uint256 currentSupply = vault.totalSupply();
         vm.prank(ORACLE);
-        tvlFeed.updateTvlForDeposit(_user, _tvl);
+        tvlFeed.updateTvlForDeposit(_user, _tvl, currentSupply);
+        
         vm.startPrank(_user);
         token.approve(address(vault), _amount);
     }
@@ -428,8 +431,11 @@ contract ShiftVaultTest is Test {
         vm.startPrank(USER);
         vault.reqDeposit();
         vm.stopPrank();
-        vm.prank(address(tvlFeed));
-        vault.allowDeposit(USER, 1);
+        
+        uint256 currentSupply = vault.totalSupply();
+        vm.prank(ORACLE);
+        tvlFeed.updateTvlForDeposit(USER, 1000, currentSupply);
+        
         vm.startPrank(USER);
         token.approve(address(vault), MIN_DEPOSIT - 1);
         vm.expectRevert();

@@ -14,7 +14,7 @@ contract MockVault {
         baseToken = MockERC20(_baseToken);
     }
 
-    function allowDeposit(address, uint256) external {}
+    function allowDeposit(address, uint256, uint256, uint256) external {}
 
     function totalSupply() external pure returns (uint256) {
         return 1000; // Mock total supply
@@ -85,7 +85,7 @@ contract ShiftTvlFeedTest is Test {
     /// @notice Tests that the oracle can call updateTvlForDeposit
     function testUpdateTvlForDeposit() public {
         vm.prank(ORACLE);
-        tvlFeed.updateTvlForDeposit(address(0x99), 123);
+        tvlFeed.updateTvlForDeposit(address(0x99), 123, 1000);
         assertEq(tvlFeed.exposed_tvlHistoryLength(), 1);
         ShiftTvlFeed.TvlData memory d = tvlFeed.exposed_tvlHistoryAt(0);
         assertEq(d.value, 123);
@@ -113,5 +113,29 @@ contract ShiftTvlFeedTest is Test {
         vm.stopPrank();
         ShiftTvlFeed.TvlData memory entry = tvlFeed.getTvlEntry(2);
         assertEq(entry.value, 102);
+    }
+
+    /// @notice Tests that updateTvlForDeposit works correctly with referenceSupply parameter
+    function testUpdateTvlForDepositWithReferenceSupply() public {
+        vm.prank(ORACLE);
+        tvlFeed.updateTvlForDeposit(address(0x99), 500, 1000); // referenceSupply = 1000 (should match mock vault totalSupply)
+        
+        assertEq(tvlFeed.exposed_tvlHistoryLength(), 1);
+        ShiftTvlFeed.TvlData memory d = tvlFeed.exposed_tvlHistoryAt(0);
+        assertEq(d.value, 500);
+        assertEq(d.supplySnapshot, 1000); // Should match the mock vault totalSupply
+    }
+
+    /// @notice Tests that updateTvlForDeposit reverts with zero address
+    function testRevertUpdateTvlForDepositZeroAddress() public {
+        vm.expectRevert();
+        vm.prank(ORACLE);
+        tvlFeed.updateTvlForDeposit(address(0), 500, 1000);
+    }
+
+    /// @notice Tests that only oracle can call updateTvlForDeposit
+    function testRevertNotOracleUpdateTvlForDeposit() public {
+        vm.expectRevert();
+        tvlFeed.updateTvlForDeposit(address(0x99), 500, 1000);
     }
 }

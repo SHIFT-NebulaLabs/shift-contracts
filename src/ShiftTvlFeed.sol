@@ -52,10 +52,11 @@ contract ShiftTvlFeed is AccessModifier {
     /// @notice Update TVL for a deposit and allow deposit for user.
     /// @param _user User address making the deposit.
     /// @param _value TVL value to record.
-    function updateTvlForDeposit(address _user, uint256 _value) external onlyOracle initialized {
+    function updateTvlForDeposit(address _user, uint256 _value, uint256 _referenceSupply) external onlyOracle initialized {
         require(_user != address(0), ZeroAddress());
-        tvlHistory.push(TvlData({value: _value, timestamp: block.timestamp, supplySnapshot: shiftVault.totalSupply()}));
-        shiftVault.allowDeposit(_user, tvlHistory.length - 1);
+        uint256 totalSupply = shiftVault.totalSupply();
+        tvlHistory.push(TvlData({value: _value, timestamp: block.timestamp, supplySnapshot: totalSupply}));
+        shiftVault.allowDeposit(_user, tvlHistory.length - 1, totalSupply, _referenceSupply);
         emit TvlUpdated(_value, block.timestamp);
     }
 
