@@ -34,7 +34,7 @@ contract ShiftVaultDepositFlowTest is Test {
 
     uint256 constant MIN_DEPOSIT = 1_000_000; // 1 USDC
     uint8 constant TOKEN_DECIMALS = 6; // USDC decimals
-    
+
     uint16 constant PERFORMANCE_FEE = 2000;
     uint16 constant MAINTENANCE_FEE = 200;
 
@@ -71,7 +71,7 @@ contract ShiftVaultDepositFlowTest is Test {
         vault.updatePerformanceFee(PERFORMANCE_FEE);
         vault.updateMaintenanceFee(MAINTENANCE_FEE);
         vault.releasePause();
-        
+
         address[] memory users = new address[](2);
         users[0] = USER1;
         users[1] = USER2;
@@ -118,7 +118,7 @@ contract ShiftVaultDepositFlowTest is Test {
         assertEq(vault.balanceOf(USER2), 1e18);
         assertEq(vault.totalSupply(), 101e18);
         assertEq(token.balanceOf(EXECUTOR), 101e6);
-        
+
         uint256 sharePrice = vault.getSharePrice();
         assertEq(sharePrice, 1e6); // 1 USDC per share
     }
@@ -149,7 +149,7 @@ contract ShiftVaultDepositFlowTest is Test {
         // === SECOND RESPONSE (SHOULD REVERT) ===
         // Supply has changed from 0 to 100e18, so User2's request is invalid
         uint256 supplyAtUser2Request = 0; // Supply when User2 made the request
-        
+
         vm.prank(ORACLE);
         vm.expectRevert(); // Should revert with NoValidRequest()
         tvlFeed.updateTvlForDeposit(USER2, 100e6, supplyAtUser2Request);
@@ -296,11 +296,11 @@ contract ShiftVaultDepositFlowTest is Test {
         vm.stopPrank();
 
         uint256 currentSupply = vault.totalSupply();
-        
+
         // First response succeeds
         vm.prank(ORACLE);
         tvlFeed.updateTvlForDeposit(USER1, 0, currentSupply);
-        
+
         // Second response fails
         vm.prank(ORACLE);
         vm.expectRevert();
@@ -322,10 +322,10 @@ contract ShiftVaultDepositFlowTest is Test {
 
         // === RESPONSES IN ORDER ===
         uint256 currentSupply = vault.totalSupply(); // 0
-        
+
         vm.prank(ORACLE);
         tvlFeed.updateTvlForDeposit(USER1, 0, currentSupply); // Response1
-        
+
         vm.prank(ORACLE);
         tvlFeed.updateTvlForDeposit(USER2, 0, currentSupply); // Response2
 
@@ -336,7 +336,7 @@ contract ShiftVaultDepositFlowTest is Test {
         vault.deposit(1e6);
         vm.stopPrank();
 
-        // USER1 deposits second (despite requesting first)  
+        // USER1 deposits second (despite requesting first)
         vm.startPrank(USER1);
         token.approve(address(vault), 100e6);
         vault.deposit(100e6);
@@ -394,7 +394,7 @@ contract ShiftVaultDepositFlowTest is Test {
     function testMultipleUsersDelayedResponses() public {
         address USER3 = address(0x123);
         deal(address(token), USER3, 50e6);
-        
+
         // Add USER3 to whitelist
         vm.prank(ADMIN);
         address[] memory users = new address[](1);
@@ -416,13 +416,13 @@ contract ShiftVaultDepositFlowTest is Test {
 
         // === ALL RESPONSES ===
         uint256 currentSupply = vault.totalSupply(); // 0
-        
+
         vm.prank(ORACLE);
         tvlFeed.updateTvlForDeposit(USER1, 0, currentSupply);
-        
+
         vm.prank(ORACLE);
         tvlFeed.updateTvlForDeposit(USER2, 0, currentSupply);
-        
+
         vm.prank(ORACLE);
         tvlFeed.updateTvlForDeposit(USER3, 0, currentSupply);
 

@@ -36,8 +36,7 @@ import {
     InsufficientTokensForBatch,
     OverflowOnNormalization,
     AlreadyClaimed,
-    ParamOutOfBounds,
-    SupplyMissmatch
+    ParamOutOfBounds
 } from "./utils/Errors.sol";
 
 /// @title ShiftVault
@@ -238,14 +237,14 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
     // Oracle functions
     // =========================
 
-    /// @notice Called by TVL feed to allow user deposit after price update.
-    /// @param _user User address allowed to deposit.
-    function allowDeposit(address _user, uint256 _tvlIndex, uint256 _supplySnapshot, uint256 _referenceSupply) external nonReentrant notPaused {
+    /// @notice Authorizes a user's deposit request after oracle price validation
+    /// @param _user User address to authorize for deposit execution
+    /// @param _tvlIndex Index of the TVL snapshot used for price validation
+    function allowDeposit(address _user, uint256 _tvlIndex) external nonReentrant notPaused {
         require(msg.sender == address(tvlFeed), NotTVLFeed());
         DepositState storage state = userDepositStates[_user];
         require(!state.isPriceUpdated, AlreadyAllowed());
         require(state.expirationTime > block.timestamp, RequestExpired());
-        require(_referenceSupply == _supplySnapshot, SupplyMissmatch());
 
         state.isPriceUpdated = true;
         state.requestIndex = _tvlIndex;

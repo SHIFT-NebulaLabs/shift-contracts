@@ -14,7 +14,7 @@ contract MockVault {
         baseToken = MockERC20(_baseToken);
     }
 
-    function allowDeposit(address, uint256, uint256, uint256) external {}
+    function allowDeposit(address, uint256) external {}
 
     function totalSupply() external pure returns (uint256) {
         return 1000; // Mock total supply
@@ -119,7 +119,7 @@ contract ShiftTvlFeedTest is Test {
     function testUpdateTvlForDepositWithReferenceSupply() public {
         vm.prank(ORACLE);
         tvlFeed.updateTvlForDeposit(address(0x99), 500, 1000); // referenceSupply = 1000 (should match mock vault totalSupply)
-        
+
         assertEq(tvlFeed.exposed_tvlHistoryLength(), 1);
         ShiftTvlFeed.TvlData memory d = tvlFeed.exposed_tvlHistoryAt(0);
         assertEq(d.value, 500);

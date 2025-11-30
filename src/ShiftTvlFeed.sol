@@ -4,7 +4,12 @@ pragma solidity ^0.8.28;
 import {IShiftVault} from "./interface/IShiftVault.sol";
 import {AccessModifier} from "./utils/AccessModifier.sol";
 import {
-    ZeroAddress, NotInitialized, AlreadyInitialized, IndexOutOfBounds, CountMustBePositive
+    ZeroAddress,
+    NotInitialized,
+    AlreadyInitialized,
+    IndexOutOfBounds,
+    CountMustBePositive,
+    SupplyMissmatch
 } from "./utils/Errors.sol";
 
 /// @title ShiftTvlFeed
@@ -52,11 +57,16 @@ contract ShiftTvlFeed is AccessModifier {
     /// @notice Update TVL for a deposit and allow deposit for user.
     /// @param _user User address making the deposit.
     /// @param _value TVL value to record.
-    function updateTvlForDeposit(address _user, uint256 _value, uint256 _referenceSupply) external onlyOracle initialized {
+    function updateTvlForDeposit(address _user, uint256 _value, uint256 _referenceSupply)
+        external
+        onlyOracle
+        initialized
+    {
         require(_user != address(0), ZeroAddress());
         uint256 totalSupply = shiftVault.totalSupply();
+        require(_referenceSupply == totalSupply, SupplyMissmatch());
         tvlHistory.push(TvlData({value: _value, timestamp: block.timestamp, supplySnapshot: totalSupply}));
-        shiftVault.allowDeposit(_user, tvlHistory.length - 1, totalSupply, _referenceSupply);
+        shiftVault.allowDeposit(_user, tvlHistory.length - 1);
         emit TvlUpdated(_value, block.timestamp);
     }
 
