@@ -8,7 +8,7 @@ import {SupplyMissmatch} from "../utils/Errors.sol";
 /// @notice Validates supply consistency between vault state and reference snapshots
 /// @dev Utility contract for applying supply mismatch protection to existing vault systems
 ///      Prevents MEV attacks by ensuring supply hasn't changed between request and execution
-/// @dev For version 1.1.0 of Shift protocol
+/// @dev For version 1.0.0 of Shift protocol
 contract SupplyValidator {
     bool public isToggled;
 
