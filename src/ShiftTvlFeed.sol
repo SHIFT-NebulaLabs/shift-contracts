@@ -54,9 +54,12 @@ contract ShiftTvlFeed is AccessModifier {
         emit TvlUpdated(_value, block.timestamp);
     }
 
-    /// @notice Update TVL for a deposit and allow deposit for user.
-    /// @param _user User address making the deposit.
-    /// @param _value TVL value to record.
+    /**
+     * @notice Updates TVL for a deposit request and authorizes the user to deposit
+     * @param _user Address to authorize for deposit (must have active request)
+     * @param _value TVL value to record in the new snapshot
+     * @param _referenceSupply Supply snapshot captured at request time (must match current)
+     */
     function updateTvlForDeposit(address _user, uint256 _value, uint256 _referenceSupply)
         external
         onlyOracle
