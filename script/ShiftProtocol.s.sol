@@ -35,7 +35,7 @@ contract DeployShiftProtocol_Testnet is Script {
             })
         });
 
-        new ShiftVault(args);
+        address shiftVault = address(new ShiftVault(args));
 
         // IMPORTANT: The ShiftAccessControl and ShiftTvlFeed contracts must be deployed before the ShiftVault contract.
         // This is because the ShiftVault constructor requires the addresses of these contracts.
@@ -44,6 +44,10 @@ contract DeployShiftProtocol_Testnet is Script {
         // IMPORTANT: Oracle & Executor must grant roles after deployment.
 
         vm.stopBroadcast();
+
+        console.log("ShiftVault deployed at:", shiftVault);
+        console.log("ShiftTvlFeed deployed at:", tvlFeed);
+        console.log("ShiftAccessControl deployed at:", accessControl);
     }
 }
 
@@ -71,7 +75,7 @@ contract DeployShiftProtocol_Mainnet is Script {
             })
         });
 
-        new ShiftVault(args);
+        address shiftVault = address(new ShiftVault(args));
 
         // IMPORTANT: The ShiftAccessControl and ShiftTvlFeed contracts must be deployed before the ShiftVault contract.
         // This is because the ShiftVault constructor requires the addresses of these contracts.
@@ -80,5 +84,9 @@ contract DeployShiftProtocol_Mainnet is Script {
         // IMPORTANT: Oracle & Executor must grant roles after deployment.
 
         vm.stopBroadcast();
+
+        console.log("ShiftVault deployed at:", shiftVault);
+        console.log("ShiftTvlFeed deployed at:", tvlFeed);
+        console.log("ShiftAccessControl deployed at:", accessControl);
     }
 }
