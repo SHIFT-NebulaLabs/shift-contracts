@@ -34,3 +34,41 @@ struct ShiftManagerArgs {
     uint16 freshness;
     uint16 requestValidity;
 }
+
+/// @notice Tracks the state of a user's deposit request
+/// @param isPriceUpdated True if the oracle has validated the price for this request
+/// @param expirationTime Timestamp after which the request expires
+/// @param requestIndex Index of the TVL snapshot used for this deposit
+struct DepositState {
+    bool isPriceUpdated;
+    uint256 expirationTime;
+    uint256 requestIndex;
+}
+
+/// @notice Tracks the state of a user's withdrawal request
+/// @param batchId ID of the withdrawal batch the request belongs to
+/// @param requestedAt Timestamp when the withdrawal was requested
+/// @param sharesAmount Amount of LP shares requested for withdrawal
+/// @param timelock Timelock duration for this withdrawal
+struct WithdrawState {
+    uint256 batchId;
+    uint256 requestedAt;
+    uint256 sharesAmount;
+    uint32 timelock;
+}
+
+/// @notice Tracks the state of a withdrawal batch
+/// @param totalShares Total LP shares included in this batch
+/// @param rate Conversion rate for the batch (TVL precision)
+struct BatchState {
+    uint256 totalShares;
+    uint256 rate;
+}
+
+/// @notice Snapshot of vault performance at the time of fee calculation
+/// @param netProfit Net profit (or loss) since last fee claim, normalized to 6 decimals
+/// @param tvl TVL (Total Value Locked) at the time of the snapshot
+struct PerformanceSnapshot {
+    int256 netProfit;
+    uint256 tvl;
+}

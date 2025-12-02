@@ -8,7 +8,7 @@ import {UD60x18, ud} from "@prb/math/src/UD60x18.sol";
 import {IShiftTvlFeed} from "./interface/IShiftTvlFeed.sol";
 import {AccessModifier} from "./utils/AccessModifier.sol";
 import {ShiftManager} from "./ShiftManager.sol";
-import {ShiftVaultArgs} from "./utils/Structs.sol";
+import {ShiftVaultArgs, DepositState, WithdrawState, BatchState, PerformanceSnapshot} from "./utils/Structs.sol";
 import {
     ZeroAddress,
     MoreThan18Decimals,
@@ -48,7 +48,7 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
     ERC20 public immutable baseToken;
     IShiftTvlFeed public immutable tvlFeed;
 
-    int256 public profitValue; // Profit value in tvl decimals
+    PerformanceSnapshot public performance;
     uint256 public availableForWithdraw;
     uint256 internal cumulativeDeposit;
     uint256 internal cumulativeWithdrawn;
@@ -66,24 +66,6 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
     event WithdrawRequested(address indexed user, uint256 shareAmount);
     event Withdrawn(address indexed user, uint256 amount);
     event WithdrawCanceled(address indexed user, uint256 shareAmount);
-
-    struct DepositState {
-        bool isPriceUpdated;
-        uint256 expirationTime;
-        uint256 requestIndex;
-    }
-
-    struct WithdrawState {
-        uint256 batchId;
-        uint256 requestedAt;
-        uint256 sharesAmount;
-        uint32 timelock;
-    }
-
-    struct BatchState {
-        uint256 totalShares;
-        uint256 rate;
-    }
 
     /**
      * @notice Initializes the ShiftVault contract with protocol parameters and sets up the initial state.
@@ -237,8 +219,9 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
     // Oracle functions
     // =========================
 
-    /// @notice Called by TVL feed to allow user deposit after price update.
-    /// @param _user User address allowed to deposit.
+    /// @notice Authorizes a user's deposit request after oracle price validation
+    /// @param _user User address to authorize for deposit execution
+    /// @param _tvlIndex Index of the TVL snapshot used for price validation
     function allowDeposit(address _user, uint256 _tvlIndex) external nonReentrant notPaused {
         require(msg.sender == address(tvlFeed), NotTVLFeed());
         DepositState storage state = userDepositStates[_user];
@@ -428,7 +411,8 @@ contract ShiftVault is ShiftManager, ERC20, ReentrancyGuard {
         int256 gain18pt = _calcGain(tvl18pt);
         uint256 feeAmount = _calcPerformanceFee(gain18pt);
 
-        profitValue = tvlScaleFactor == 0 ? gain18pt : gain18pt / int256(10 ** tvlScaleFactor);
+        performance.netProfit = tvlScaleFactor == 0 ? gain18pt : gain18pt / int256(10 ** tvlScaleFactor);
+        performance.tvl = lastTvl.value;
 
         if (feeAmount == 0) return;
         snapshotTvl18pt = tvl18pt;
